@@ -170,10 +170,12 @@ export async function generateBulkCertificates(
 }
 
 export async function previewCSVHeaders(
-    formData: FormData
+    formData: FormData,
+    userId?: string
 ): Promise<ApiResponse<{ headers: string[] }>> {
     return fetchApi<{ headers: string[] }>('/generate/bulk/preview', {
         method: 'POST',
+        headers: userId ? { 'x-user-id': userId } : undefined,
         body: formData,
     });
 }
@@ -245,10 +247,13 @@ export async function createGroup(data: { name: string; description?: string; te
     });
 }
 
-export async function updateGroup(id: string, data: { name?: string; description?: string }): Promise<ApiResponse<{ id: string; updated: boolean }>> {
+export async function updateGroup(id: string, data: { name?: string; description?: string }, userId?: string): Promise<ApiResponse<{ id: string; updated: boolean }>> {
     return fetchApi<{ id: string; updated: boolean }>(`/groups/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify(data),
     });
 }
@@ -277,9 +282,10 @@ export async function generateSingleInGroup(groupId: string, data: { data: Recor
     });
 }
 
-export async function generateBulkInGroup(groupId: string, formData: FormData): Promise<ApiResponse<{ jobId: string; message: string }>> {
+export async function generateBulkInGroup(groupId: string, formData: FormData, userId?: string): Promise<ApiResponse<{ jobId: string; message: string }>> {
     return fetchApi<{ jobId: string; message: string }>(`/groups/${groupId}/generate/bulk`, {
         method: 'POST',
+        headers: userId ? { 'x-user-id': userId } : undefined,
         body: formData,
     });
 }

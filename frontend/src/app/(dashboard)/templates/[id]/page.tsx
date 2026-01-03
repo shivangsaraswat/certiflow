@@ -12,6 +12,7 @@ import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { LoadingPage } from '@/components/shared/loading-spinner';
 import { getTemplate } from '@/lib/api';
+import { useSession } from 'next-auth/react';
 
 const TemplateEditor = dynamic(
     () => import('@/components/editor/template-editor').then((mod) => mod.TemplateEditor),
@@ -25,14 +26,17 @@ interface PageProps {
 
 export default function TemplateEditorPage({ params }: PageProps) {
     const { id } = use(params);
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [template, setTemplate] = useState<Template | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         async function loadTemplate() {
+            if (!userId) return;
             try {
-                const res = await getTemplate(id);
+                const res = await getTemplate(id, userId);
                 if (res.success && res.data) {
                     setTemplate(res.data);
                 } else {
@@ -45,8 +49,10 @@ export default function TemplateEditorPage({ params }: PageProps) {
             }
         }
 
-        loadTemplate();
-    }, [id]);
+        if (userId) {
+            loadTemplate();
+        }
+    }, [id, userId]);
 
     if (isLoading) {
         return <LoadingPage message="Loading template editor..." />;

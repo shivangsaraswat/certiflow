@@ -72,7 +72,7 @@ export interface Signature {
     filename: string;
     filepath: string; // URL
     fileId?: string;
-    uploadDate: Date;
+    createdAt: Date;
     userId?: string;
 }
 

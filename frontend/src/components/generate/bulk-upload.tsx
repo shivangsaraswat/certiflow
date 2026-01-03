@@ -1,4 +1,5 @@
 'use client';
+import { useSession } from 'next-auth/react';
 
 /**
  * Bulk Upload Form
@@ -37,6 +38,8 @@ interface Spreadsheet {
 }
 
 export function BulkUploadForm() {
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     // Data state
     const [templates, setTemplates] = useState<Template[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -65,11 +68,14 @@ export function BulkUploadForm() {
     // Load templates & spreadsheets
     useEffect(() => {
         async function loadData() {
+            if (!userId) return;
             try {
                 const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
                 const [tplRes, sheetRes] = await Promise.all([
-                    getTemplates(),
-                    fetch(`${baseUrl}/api/spreadsheets`).then(r => r.json())
+                    getTemplates(userId),
+                    fetch(`${baseUrl}/api/spreadsheets`, {
+                        headers: { 'x-user-id': userId }
+                    }).then(r => r.json())
                 ]);
 
                 if (tplRes.success && tplRes.data) {
@@ -84,8 +90,10 @@ export function BulkUploadForm() {
                 setIsLoading(false);
             }
         }
-        loadData();
-    }, []);
+        if (userId) {
+            loadData();
+        }
+    }, [userId]);
 
     // Reset mapping when template changes
     useEffect(() => {
@@ -121,7 +129,7 @@ export function BulkUploadForm() {
             const formData = new FormData();
             formData.append('csv', file);
 
-            const res = await previewCSVHeaders(formData);
+            const res = await previewCSVHeaders(formData, userId);
             if (res.success && res.data) {
                 setSourceHeaders(res.data.headers);
             } else {
@@ -148,7 +156,9 @@ export function BulkUploadForm() {
         try {
             // Fetch sheet content to extract headers (row 0)
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const res = await fetch(`${baseUrl}/api/spreadsheets/${sheetId}`);
+            const res = await fetch(`${baseUrl}/api/spreadsheets/${sheetId}`, {
+                headers: { 'x-user-id': userId || '' }
+            });
             const data = await res.json();
 
             if (data.success && data.data.content) {
@@ -249,7 +259,7 @@ export function BulkUploadForm() {
                 formData.append('sheetId', selectedSheetId); // Backend must handle this
             }
 
-            const res = await generateBulkCertificates(formData);
+            const res = await generateBulkCertificates(formData, userId);
             if (res.success && res.data) {
                 setResult(res.data);
                 toast.success('Generation started successfully');

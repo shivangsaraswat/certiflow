@@ -83,7 +83,7 @@ router.post('/signatures', upload.single('file'), async (req, res) => {
             name: dbRecord.name,
             filename: dbRecord.filename,
             filepath: dbRecord.fileUrl,
-            uploadDate: dbRecord.createdAt,
+            createdAt: dbRecord.createdAt,
             fileId: dbRecord.fileId || undefined
         };
 

@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Upload, FileText } from 'lucide-react';
@@ -35,6 +36,8 @@ interface TemplateUploadFormProps {
 
 export function TemplateUploadForm({ onSuccess, returnTo }: TemplateUploadFormProps) {
     const router = useRouter();
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -60,7 +63,13 @@ export function TemplateUploadForm({ onSuccess, returnTo }: TemplateUploadFormPr
             }
             formData.append('template', data.template);
 
-            const result = await createTemplate(formData);
+            if (!userId) {
+                setError('You must be logged in to upload templates');
+                setIsLoading(false);
+                return;
+            }
+
+            const result = await createTemplate(formData, userId);
 
             if (result.success) {
                 form.reset();
