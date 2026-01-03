@@ -2,11 +2,11 @@
 
 /**
  * Bulk Upload Form
- * CSV upload with dynamic column mapping based on template attributes
+ * CSV upload or Data Vault selection with dynamic column mapping
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Upload, Download, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, AlertCircle, Database, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { FileUpload } from '@/components/shared/file-upload';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
@@ -27,39 +28,63 @@ import {
     getDownloadUrl,
 } from '@/lib/api';
 import type { Template, BulkGenerationResult } from '@/types';
+import { toast } from 'sonner';
+
+interface Spreadsheet {
+    id: string;
+    name: string;
+    updatedAt: string;
+}
 
 export function BulkUploadForm() {
     // Data state
     const [templates, setTemplates] = useState<Template[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [sourceType, setSourceType] = useState<'csv' | 'vault'>('csv');
+
+    // CSV State
     const [csvFile, setCsvFile] = useState<File | null>(null);
-    const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+
+    // Vault State
+    const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
+    const [selectedSheetId, setSelectedSheetId] = useState<string>('');
+
+    // Shared State
+    const [sourceHeaders, setSourceHeaders] = useState<string[]>([]);
     const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
 
     // UI state
     const [isLoading, setIsLoading] = useState(true);
-    const [isPreviewingCSV, setIsPreviewingCSV] = useState(false);
+    const [isProcessingSource, setIsProcessingSource] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<BulkGenerationResult | null>(null);
 
     const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
-    // Load templates
+    // Load templates & spreadsheets
     useEffect(() => {
-        async function loadTemplates() {
+        async function loadData() {
             try {
-                const res = await getTemplates();
-                if (res.success && res.data) {
-                    setTemplates(res.data);
+                const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                const [tplRes, sheetRes] = await Promise.all([
+                    getTemplates(),
+                    fetch(`${baseUrl}/api/spreadsheets`).then(r => r.json())
+                ]);
+
+                if (tplRes.success && tplRes.data) {
+                    setTemplates(tplRes.data);
+                }
+                if (sheetRes.success && sheetRes.data) {
+                    setSpreadsheets(sheetRes.data);
                 }
             } catch {
-                setError('Failed to load templates');
+                setError('Failed to load initial data');
             } finally {
                 setIsLoading(false);
             }
         }
-        loadTemplates();
+        loadData();
     }, []);
 
     // Reset mapping when template changes
@@ -68,7 +93,7 @@ export function BulkUploadForm() {
             const initialMapping: Record<string, string> = {};
             selectedTemplate.attributes.forEach((attr) => {
                 // Try to auto-map based on similar names
-                const matchingHeader = csvHeaders.find(
+                const matchingHeader = sourceHeaders.find(
                     (h) =>
                         h.toLowerCase() === attr.name.toLowerCase() ||
                         h.toLowerCase() === attr.placeholder.replace(/[{}]/g, '').toLowerCase()
@@ -79,17 +104,17 @@ export function BulkUploadForm() {
             });
             setColumnMapping(initialMapping);
         }
-    }, [selectedTemplateId, selectedTemplate, csvHeaders]);
+    }, [selectedTemplateId, selectedTemplate, sourceHeaders]);
 
     const handleCSVChange = useCallback(async (file: File | null) => {
         setCsvFile(file);
-        setCsvHeaders([]);
+        setSourceHeaders([]);
         setColumnMapping({});
         setResult(null);
 
         if (!file) return;
 
-        setIsPreviewingCSV(true);
+        setIsProcessingSource(true);
         setError(null);
 
         try {
@@ -98,28 +123,73 @@ export function BulkUploadForm() {
 
             const res = await previewCSVHeaders(formData);
             if (res.success && res.data) {
-                setCsvHeaders(res.data.headers);
+                setSourceHeaders(res.data.headers);
             } else {
                 setError(res.error?.message || 'Failed to read CSV headers');
             }
         } catch {
             setError('Failed to read CSV file');
         } finally {
-            setIsPreviewingCSV(false);
+            setIsProcessingSource(false);
         }
     }, []);
 
-    const handleMappingChange = useCallback((attrId: string, csvColumn: string) => {
+    const handleSheetSelect = useCallback(async (sheetId: string) => {
+        setSelectedSheetId(sheetId);
+        setSourceHeaders([]);
+        setColumnMapping({});
+        setResult(null);
+
+        if (!sheetId) return;
+
+        setIsProcessingSource(true);
+        setError(null);
+
+        try {
+            // Fetch sheet content to extract headers (row 0)
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/spreadsheets/${sheetId}`);
+            const data = await res.json();
+
+            if (data.success && data.data.content) {
+                const content = data.data.content[0]; // First sheet
+                if (content && content.celldata) {
+                    // Extract headers from row 0
+                    const headers: string[] = [];
+                    content.celldata.forEach((cell: any) => {
+                        if (cell.r === 0) {
+                            const val = cell.v?.m || cell.v?.v || '';
+                            if (val) headers[cell.c] = String(val);
+                        }
+                    });
+                    // Filter out empty slots if any (though usually dense)
+                    setSourceHeaders(headers.filter(Boolean));
+                } else {
+                    setError('Sheet seems empty or invalid');
+                }
+            } else {
+                setError('Failed to load spreadsheet data');
+            }
+        } catch {
+            setError('Failed to process spreadsheet');
+        } finally {
+            setIsProcessingSource(false);
+        }
+    }, []);
+
+    const handleMappingChange = useCallback((attrId: string, colName: string) => {
         setColumnMapping((prev) => ({
             ...prev,
-            [attrId]: csvColumn,
+            [attrId]: colName,
         }));
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!selectedTemplate || !csvFile) return;
+        if (!selectedTemplate) return;
+        if (sourceType === 'csv' && !csvFile) return;
+        if (sourceType === 'vault' && !selectedSheetId) return;
 
         // Validate required mappings
         const missingRequired = selectedTemplate.attributes
@@ -136,22 +206,28 @@ export function BulkUploadForm() {
         setResult(null);
 
         try {
-            // Invert mapping: backend expects csvColumn -> attributeId
+            // Invert mapping: backend expects sourceColumn -> attributeId
             const backendMapping: Record<string, string> = {};
-            Object.entries(columnMapping).forEach(([attrId, csvColumn]) => {
-                if (csvColumn) {
-                    backendMapping[csvColumn] = attrId;
+            Object.entries(columnMapping).forEach(([attrId, sourceCol]) => {
+                if (sourceCol) {
+                    backendMapping[sourceCol] = attrId;
                 }
             });
 
             const formData = new FormData();
             formData.append('templateId', selectedTemplateId);
-            formData.append('csv', csvFile);
             formData.append('columnMapping', JSON.stringify(backendMapping));
+
+            if (sourceType === 'csv' && csvFile) {
+                formData.append('csv', csvFile);
+            } else if (sourceType === 'vault' && selectedSheetId) {
+                formData.append('sheetId', selectedSheetId); // Backend must handle this
+            }
 
             const res = await generateBulkCertificates(formData);
             if (res.success && res.data) {
                 setResult(res.data);
+                toast.success('Generation started successfully');
             } else {
                 setError(res.error?.message || 'Failed to generate certificates');
             }
@@ -173,19 +249,14 @@ export function BulkUploadForm() {
     return (
         <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
-                {/* Upload & Mapping */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <FileSpreadsheet className="h-5 w-5" />
-                            CSV Upload
-                        </CardTitle>
-                        <CardDescription>
-                            Upload a CSV file and map columns to template attributes
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Configuration */}
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Source Configuration</CardTitle>
+                            <CardDescription>Select data source and template</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
                             {/* Template Selection */}
                             <div className="space-y-2">
                                 <Label>Template</Label>
@@ -209,184 +280,252 @@ export function BulkUploadForm() {
                                 </Select>
                             </div>
 
-                            {/* CSV Upload */}
-                            <div className="space-y-2">
-                                <Label>CSV File</Label>
-                                <FileUpload
-                                    accept=".csv"
-                                    onFileSelect={handleCSVChange}
-                                    value={csvFile}
-                                    maxSize={10 * 1024 * 1024}
-                                    disabled={!selectedTemplateId}
-                                />
-                                {isPreviewingCSV && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                        <LoadingSpinner size="sm" />
-                                        Reading CSV headers...
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Column Mapping */}
-                            {selectedTemplate && csvHeaders.length > 0 && (
-                                <div className="space-y-4">
-                                    <Label>Column Mapping</Label>
-                                    <div className="space-y-3">
-                                        {selectedTemplate.attributes.map((attr) => (
-                                            <div key={attr.id} className="flex items-center gap-3">
-                                                <div className="w-1/2">
-                                                    <span className="text-sm font-medium">
-                                                        {attr.name}
-                                                        {attr.required && (
-                                                            <span className="ml-1 text-destructive">*</span>
-                                                        )}
-                                                    </span>
-                                                    <span className="ml-2 text-xs text-muted-foreground">
-                                                        {attr.placeholder}
-                                                    </span>
-                                                </div>
-                                                <div className="w-1/2">
-                                                    <Select
-                                                        value={columnMapping[attr.id] || ''}
-                                                        onValueChange={(v) => handleMappingChange(attr.id, v)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select column" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="">-- Skip --</SelectItem>
-                                                            {csvHeaders.map((header) => (
-                                                                <SelectItem key={header} value={header}>
-                                                                    {header}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Error Display */}
-                            {error && (
-                                <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                                    {error}
-                                </div>
-                            )}
-
-                            {/* Submit Button */}
-                            <Button
-                                type="submit"
+                            <Tabs
+                                defaultValue="csv"
+                                value={sourceType}
+                                onValueChange={(v) => setSourceType(v as 'csv' | 'vault')}
                                 className="w-full"
-                                disabled={
-                                    !selectedTemplate ||
-                                    !csvFile ||
-                                    csvHeaders.length === 0 ||
-                                    isGenerating
-                                }
                             >
-                                {isGenerating ? (
-                                    <>
-                                        <LoadingSpinner size="sm" className="mr-2" />
-                                        Generating Certificates...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Upload className="mr-2 h-4 w-4" />
-                                        Generate Bulk Certificates
-                                    </>
-                                )}
-                            </Button>
-                        </form>
-                    </CardContent>
-                </Card>
+                                <TabsList className="grid w-full grid-cols-2 mb-4">
+                                    <TabsTrigger value="csv">CSV Upload</TabsTrigger>
+                                    <TabsTrigger value="vault">Data Vault</TabsTrigger>
+                                </TabsList>
 
-                {/* Results */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Results</CardTitle>
-                        <CardDescription>
-                            Generation progress and download
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {!result && (
-                            <div className="flex h-64 items-center justify-center text-muted-foreground">
-                                Upload a CSV and configure mapping to generate
-                            </div>
-                        )}
+                                <TabsContent value="csv" className="space-y-4">
+                                    <div className="rounded-lg border border-dashed p-4">
+                                        <Label className="mb-2 block">Upload CSV File</Label>
+                                        <FileUpload
+                                            accept=".csv"
+                                            onFileSelect={handleCSVChange}
+                                            value={csvFile}
+                                            maxSize={10 * 1024 * 1024}
+                                            disabled={!selectedTemplateId}
+                                        />
+                                    </div>
+                                </TabsContent>
 
-                        {result && (
-                            <div className="space-y-6">
-                                {/* Stats */}
-                                <div className="grid grid-cols-3 gap-4 text-center">
-                                    <div className="rounded-lg bg-muted p-4">
-                                        <p className="text-2xl font-bold">{result.totalRequested}</p>
-                                        <p className="text-sm text-muted-foreground">Total</p>
-                                    </div>
-                                    <div className="rounded-lg bg-green-50 p-4 dark:bg-green-900/20">
-                                        <p className="text-2xl font-bold text-green-600">
-                                            {result.successful}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">Successful</p>
-                                    </div>
-                                    <div className="rounded-lg bg-red-50 p-4 dark:bg-red-900/20">
-                                        <p className="text-2xl font-bold text-red-600">
-                                            {result.failed}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">Failed</p>
-                                    </div>
-                                </div>
-
-                                {/* Progress */}
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                        <span>Progress</span>
-                                        <span>
-                                            {Math.round((result.successful / result.totalRequested) * 100)}%
-                                        </span>
-                                    </div>
-                                    <Progress
-                                        value={(result.successful / result.totalRequested) * 100}
-                                    />
-                                </div>
-
-                                {/* Errors */}
-                                {result.errors && result.errors.length > 0 && (
-                                    <div className="max-h-32 overflow-auto rounded-lg bg-red-50 p-3 text-sm dark:bg-red-900/20">
-                                        <p className="mb-2 font-medium text-red-600">Errors:</p>
-                                        {result.errors.slice(0, 5).map((err, i) => (
-                                            <p key={i} className="text-red-600">
-                                                Row {err.row}: {err.message}
-                                            </p>
-                                        ))}
-                                        {result.errors.length > 5 && (
-                                            <p className="text-muted-foreground">
-                                                ...and {result.errors.length - 5} more
-                                            </p>
+                                <TabsContent value="vault" className="space-y-4">
+                                    <div className="rounded-lg border bg-muted/30 p-4">
+                                        <Label className="mb-2 block">Select Spreadsheet</Label>
+                                        {spreadsheets.length === 0 ? (
+                                            <div className="text-sm text-muted-foreground py-2">
+                                                No spreadsheets found. Go to Data Vault to create one.
+                                            </div>
+                                        ) : (
+                                            <Select
+                                                value={selectedSheetId}
+                                                onValueChange={handleSheetSelect}
+                                                disabled={!selectedTemplateId}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select a spreadsheet" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {spreadsheets.map(sheet => (
+                                                        <SelectItem key={sheet.id} value={sheet.id}>
+                                                            <div className="flex items-center gap-2">
+                                                                <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+                                                                {sheet.name}
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         )}
                                     </div>
-                                )}
+                                </TabsContent>
+                            </Tabs>
 
-                                {/* Download */}
-                                {result.successful > 0 && (
-                                    <Button asChild className="w-full">
-                                        <a
-                                            href={getDownloadUrl('bulk-zips', result.zipUrl.split('/').pop() || '')}
-                                            download
-                                        >
-                                            <Download className="mr-2 h-4 w-4" />
-                                            Download ZIP ({result.successful} certificates)
-                                        </a>
+                            {isProcessingSource && (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <LoadingSpinner size="sm" />
+                                    Processing data headers...
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Mapping (Only show if source is selected) */}
+                    {selectedTemplateId && sourceHeaders.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Field Mapping</CardTitle>
+                                <CardDescription>Map template fields to data columns</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <form id="bulk-form" onSubmit={handleSubmit} className="space-y-4">
+                                    {selectedTemplate?.attributes.map((attr) => (
+                                        <div key={attr.id} className="flex items-center gap-3">
+                                            <div className="w-1/3">
+                                                <span className="text-sm font-medium block truncate" title={attr.name}>
+                                                    {attr.name}
+                                                </span>
+                                                {attr.required && (
+                                                    <span className="text-[10px] text-destructive uppercase font-bold tracking-wider">Required</span>
+                                                )}
+                                            </div>
+                                            <div className="w-2/3">
+                                                <Select
+                                                    value={columnMapping[attr.id] || ''}
+                                                    onValueChange={(v) => handleMappingChange(attr.id, v)}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select column" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="">-- Skip --</SelectItem>
+                                                        {sourceHeaders.map((header) => (
+                                                            <SelectItem key={header} value={header}>
+                                                                {header}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {error && (
+                                        <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive mt-4">
+                                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                            {error}
+                                        </div>
+                                    )}
+
+                                    <Button
+                                        type="submit"
+                                        className="w-full mt-4"
+                                        disabled={isGenerating || (sourceType === 'csv' ? !csvFile : !selectedSheetId)}
+                                    >
+                                        {isGenerating ? (
+                                            <>
+                                                <LoadingSpinner size="sm" className="mr-2" />
+                                                Generating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Upload className="mr-2 h-4 w-4" />
+                                                Start Generation
+                                            </>
+                                        )}
                                     </Button>
-                                )}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                                </form>
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+
+                {/* Results Preview (Right Column) */}
+                <div className="space-y-6">
+                    <Card className="h-full border-dashed bg-muted/10">
+                        <CardHeader>
+                            <CardTitle>Generation Status</CardTitle>
+                            <CardDescription>
+                                Track progress and download results
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {!result && !isGenerating && (
+                                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                                    <div className="rounded-full bg-muted p-4 mb-4">
+                                        <Database className="h-8 w-8 text-muted-foreground/50" />
+                                    </div>
+                                    <h4 className="font-medium mb-1">Ready to Generate</h4>
+                                    <p className="text-sm max-w-[200px]">
+                                        Configure your source and mapping to begin the bulk generation process.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Active Generation State */}
+                            {isGenerating && !result && (
+                                <div className="flex flex-col items-center justify-center py-12 text-center">
+                                    <LoadingSpinner size="lg" className="mb-4" />
+                                    <h4 className="font-medium">Generating Certificates...</h4>
+                                    <p className="text-sm text-muted-foreground mt-1">This might take a while depending on the batch size.</p>
+                                </div>
+                            )}
+
+                            {result && (
+                                <div className="space-y-6">
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-3 gap-3 text-center">
+                                        <div className="rounded-lg bg-background border p-3">
+                                            <p className="text-2xl font-bold">{result.totalRequested}</p>
+                                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Total</p>
+                                        </div>
+                                        <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                                {result.successful}
+                                            </p>
+                                            <p className="text-xs text-green-600/80 dark:text-green-400/80 uppercase tracking-wide">Success</p>
+                                        </div>
+                                        <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+                                            <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                                                {result.failed}
+                                            </p>
+                                            <p className="text-xs text-red-600/80 dark:text-red-400/80 uppercase tracking-wide">Failed</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Progress Bar */}
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs font-medium">
+                                            <span>Completion</span>
+                                            <span>
+                                                {Math.round((result.successful / result.totalRequested) * 100)}%
+                                            </span>
+                                        </div>
+                                        <Progress
+                                            value={(result.successful / result.totalRequested) * 100}
+                                            className="h-2"
+                                        />
+                                    </div>
+
+                                    {/* Error List */}
+                                    {result.errors && result.errors.length > 0 && (
+                                        <div className="max-h-48 overflow-auto rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">
+                                            <p className="mb-2 font-medium text-destructive flex items-center gap-2">
+                                                <AlertCircle className="h-4 w-4" />
+                                                Error Log
+                                            </p>
+                                            <div className="space-y-1">
+                                                {result.errors.slice(0, 10).map((err, i) => (
+                                                    <div key={i} className="text-xs text-destructive/90 font-mono bg-destructive/5 p-1 rounded">
+                                                        Row {err.row}: {err.message}
+                                                    </div>
+                                                ))}
+                                                {result.errors.length > 10 && (
+                                                    <p className="text-xs text-muted-foreground mt-2 italic">
+                                                        ...and {result.errors.length - 10} more errors
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Download Action */}
+                                    {result.successful > 0 && (
+                                        <div className="pt-4 border-t">
+                                            <Button asChild className="w-full shadow-lg animate-in fade-in zoom-in duration-300">
+                                                <a
+                                                    href={getDownloadUrl('bulk-zips', result.zipUrl.split('/').pop() || '')}
+                                                    download
+                                                >
+                                                    <Download className="mr-2 h-4 w-4" />
+                                                    Download ZIP Bundle
+                                                </a>
+                                            </Button>
+                                            <p className="text-center text-xs text-muted-foreground mt-2">
+                                                Contains {result.successful} generated PDF files
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
     );

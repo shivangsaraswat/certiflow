@@ -39,19 +39,23 @@ export async function deleteTemplate(id: string): Promise<boolean> {
  */
 // Create template from file
 export const createTemplate = async (file: Express.Multer.File, data?: { name?: string, description?: string }): Promise<Template> => {
-    // 1. Upload to Storage (ImageKit)
-    // We use the 'templates' type
+    // 1. Read file buffer immediately to avoid re-fetching or file deletion issues
+    let fileBuffer: Buffer;
+    if (file.buffer) {
+        fileBuffer = file.buffer;
+    } else if (file.path) {
+        fileBuffer = fs.readFileSync(file.path);
+    } else {
+        throw new Error('File content missing');
+    }
+
+    // 2. Upload to Storage (ImageKit)
+    // We use the 'templates' type. 
+    // storage.saveFile will handle the upload and cleanup of the temp file.
     const uploadResult = await storage.saveFile(file, 'templates');
 
-    // 2. Fetch/Extract metadata
-    // We need the file content to extract metadata (pdf-lib needs it).
-    // storage.saveFile returns info, but we also need buffer. 
-    // If we used diskStorage, we might have read it.
-    // In ImageKit provider, we read buffer to upload.
-    // We might need to fetch it back or optimized: read buffer first, then upload?
-    // Let's fetch it back for consistency using getFile
-    const fileBuffer = await storage.getFile('templates', uploadResult.name);
-
+    // 3. Extract metadata using the local buffer
+    // This avoids calling storage.getFile which can fail due to eventual consistency
     const id = uuidv4();
     const metadata = await getPDFMetadata(fileBuffer);
 

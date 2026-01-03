@@ -19,9 +19,15 @@ export function Header() {
         const segments = pathname.split('/').filter(Boolean);
         if (segments.length === 0) return 'Dashboard';
 
-        return segments.map(segment =>
-            segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
-        ).join(' / ');
+        return segments.map((segment, index) => {
+            // Check if segment looks like a UUID or ID (long alphanumeric)
+            if (segment.length > 20 && /\d/.test(segment)) {
+                // If previous segment was 'templates', return 'Editor'
+                if (segments[index - 1] === 'templates') return 'Editor';
+                return 'Item';
+            }
+            return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ');
+        }).join(' / ');
     };
 
     return (

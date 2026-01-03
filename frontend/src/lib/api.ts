@@ -13,7 +13,7 @@ import type {
     DynamicAttribute,
 } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001') + '/api';
 
 /**
  * Generic fetch wrapper with error handling
@@ -181,6 +181,7 @@ export function getDownloadUrl(type: string, filename: string): string {
     return `${API_BASE_URL}/files/download/${type}/${filename}`;
 }
 
-export function getViewUrl(type: string, filename: string): string {
-    return `${API_BASE_URL}/files/view/${type}/${filename}`;
+export function getViewUrl(type: string, filename: string, thumbnail?: boolean): string {
+    const url = `${API_BASE_URL}/files/view/${type}/${filename}`;
+    return thumbnail ? `${url}?thumbnail=true` : url;
 }

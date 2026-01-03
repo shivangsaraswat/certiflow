@@ -105,13 +105,20 @@ router.post('/bulk/upload', upload.single('file'), async (req, res) => {
 // Bulk Generation - Step 2: Start Job
 router.post('/bulk/start', async (req, res) => {
     try {
-        const { templateId, csvFilepath, mapping } = req.body;
+        const { templateId, csvFilepath, sheetId, mapping } = req.body;
 
-        if (!templateId || !csvFilepath || !mapping) {
+        if (!templateId || (!csvFilepath && !sheetId) || !mapping) {
             return res.status(400).json({ success: false, error: 'Missing required parameters' });
         }
 
-        const jobId = await processBulkGeneration(templateId, csvFilepath, mapping);
+        let source: any;
+        if (sheetId) {
+            source = { type: 'sheet', id: sheetId };
+        } else {
+            source = { type: 'csv', path: csvFilepath };
+        }
+
+        const jobId = await processBulkGeneration(templateId, source, mapping);
 
         const response: ApiResponse<BulkGenerationResult> = {
             success: true,

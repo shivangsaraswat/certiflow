@@ -7,14 +7,7 @@ import { LoadingPage } from '@/components/shared/loading-spinner';
  */
 export default function GeneratePage() {
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold">Generate Certificate</h1>
-                <p className="text-muted-foreground">
-                    Create a single certificate with custom details
-                </p>
-            </div>
-
+        <div className="max-w-5xl mx-auto py-6">
             <Suspense fallback={<LoadingPage message="Loading..." />}>
                 <SingleCertificateForm />
             </Suspense>

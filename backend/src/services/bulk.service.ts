@@ -6,7 +6,7 @@ import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import archiver from 'archiver';
 import { db } from '../lib/db.js';
-import { bulkJobs, certificates } from '../db/schema.js';
+import { bulkJobs, certificates, spreadsheetData } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 
 import { config } from '../config/index.js';
@@ -59,8 +59,8 @@ export async function getCSVHeaders(filepath: string): Promise<string[]> {
 
 export async function processBulkGeneration(
     templateId: string,
-    csvFilepath: string,
-    columnMapping: Record<string, string> // CSV Column -> Attribute Name (changed from ID)
+    source: { type: 'csv', path: string } | { type: 'sheet', id: string },
+    columnMapping: Record<string, string>
 ): Promise<string> {
     const jobId = uuidv4();
     const template = await getTemplateById(templateId);
@@ -69,33 +69,92 @@ export async function processBulkGeneration(
         throw new Error('Template not found');
     }
 
-    // 1. Parse CSV to get total count
-    const records: CSVRecord[] = [];
-    const parser = fs.createReadStream(csvFilepath).pipe(parse({
-        columns: true,
-        skip_empty_lines: true,
-        trim: true
-    }));
+    let records: CSVRecord[] = [];
+    let sourceType = source.type;
 
-    for await (const record of parser) {
-        records.push(record);
+    if (source.type === 'csv') {
+        const parser = fs.createReadStream(source.path).pipe(parse({
+            columns: true,
+            skip_empty_lines: true,
+            trim: true
+        }));
+        for await (const record of parser) {
+            records.push(record);
+        }
+    } else if (source.type === 'sheet') {
+        // Fetch sheet content
+        const sheetData = await db.select().from(spreadsheetData).where(eq(spreadsheetData.spreadsheetId, source.id));
+        if (!sheetData[0] || !sheetData[0].content) {
+            throw new Error('Spreadsheet data not found');
+        }
+
+        // Parse FortuneSheet data to Records
+        // FortuneSheet content is array of sheets. We take the first one.
+        const content = sheetData[0].content as any[];
+        const sheet = content[0]; // Assume first sheet
+        if (!sheet || !sheet.celldata) {
+            throw new Error('Sheet is empty');
+        }
+
+        // Convert celldata to row-based map
+        // celldata: [{ r: 0, c: 0, v: { v: "Value" } }]
+        const celldata = sheet.celldata;
+        const grid: Record<number, Record<number, string>> = {};
+        let maxRow = 0;
+        let maxCol = 0;
+
+        for (const cell of celldata) {
+            if (!grid[cell.r]) grid[cell.r] = {};
+            const val = cell.v?.m || cell.v?.v || ''; // m is display value, v is raw
+            grid[cell.r][cell.c] = String(val);
+            if (cell.r > maxRow) maxRow = cell.r;
+            if (cell.c > maxCol) maxCol = cell.c;
+        }
+
+        // Row 0 is Headers
+        const headers: Record<number, string> = {};
+        if (grid[0]) {
+            Object.entries(grid[0]).forEach(([c, val]) => {
+                headers[Number(c)] = val;
+            });
+        }
+
+        // Rows 1+ are Data
+        for (let i = 1; i <= maxRow; i++) {
+            if (!grid[i]) continue;
+            const record: CSVRecord = {};
+            let hasData = false;
+
+            // Iterate known headers
+            Object.entries(headers).forEach(([c, headerName]) => {
+                const val = grid[i][Number(c)];
+                if (val) {
+                    record[headerName] = val;
+                    hasData = true;
+                }
+            });
+
+            if (hasData) {
+                records.push(record);
+            }
+        }
     }
 
     // 2. Create Job Record
     const newJob = {
         id: jobId,
         templateId,
-        sourceType: 'csv',
+        sourceType: sourceType,
         totalRecords: records.length,
         status: 'processing',
         successful: 0,
         failed: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
-        errors: [] as BulkError[], // Store empty array as json
+        errors: [] as BulkError[],
     };
 
-    await db.insert(bulkJobs).values(newJob as any); // Type cast for errors JSON
+    await db.insert(bulkJobs).values(newJob as any);
 
     // 3. Start async processing
     processBatch(jobId, template, records, columnMapping).catch(err => {

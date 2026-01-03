@@ -141,9 +141,7 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                     </Link>
                     <div>
                         <h1 className="text-xl font-bold">{template.name}</h1>
-                        <p className="text-sm text-muted-foreground">
-                            {Math.round(pdfDimensions.width)} × {Math.round(pdfDimensions.height)} pt • {template.pageCount} page(s)
-                        </p>
+
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -204,47 +202,53 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                 </div>
 
                 {/* Property Panel */}
-                <div className="shrink-0">
+                <div className="shrink-0 h-full border-l bg-background">
                     <PropertyPanel
                         attribute={selectedAttribute}
+                        attributes={attributes}
                         pageCount={template.pageCount}
+                        pdfDimensions={pdfDimensions}
                         onChange={handleAttributeChange}
                         onDelete={handleDeleteAttribute}
+                        onSelect={setSelectedId}
                     />
                 </div>
             </div>
 
             {/* Toolbar */}
-            <div className="mt-4 flex items-center justify-between rounded-lg border bg-card p-3">
-                <div className="flex items-center gap-2">
-                    <Button onClick={handleAddAttribute} size="sm">
+            <div className="mt-4 flex items-center justify-between rounded-xl border bg-card p-4 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <Button onClick={handleAddAttribute} className="shadow-sm">
                         <Plus className="mr-2 h-4 w-4" />
                         Add Attribute
                     </Button>
-                    <div className="mx-2 h-6 w-px bg-border" />
-                    <span className="text-sm text-muted-foreground">
-                        {attributes.length} attribute{attributes.length !== 1 ? 's' : ''}
-                    </span>
+                    <div className="h-8 w-px bg-border" />
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">{attributes.length}</span>
+                        <span>attributes placed</span>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-6">
                     {/* Page Navigation */}
                     {template.pageCount > 1 && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-1">
                             <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="icon"
+                                className="h-8 w-8"
                                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                                 disabled={currentPage <= 1}
                             >
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
-                            <span className="text-sm">
-                                Page {currentPage} of {template.pageCount}
+                            <span className="min-w-[4rem] text-center text-sm font-medium">
+                                {currentPage} / {template.pageCount}
                             </span>
                             <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="icon"
+                                className="h-8 w-8"
                                 onClick={() => setCurrentPage((p) => Math.min(template.pageCount, p + 1))}
                                 disabled={currentPage >= template.pageCount}
                             >
@@ -253,18 +257,16 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                         </div>
                     )}
 
-                    <div className="h-6 w-px bg-border" />
-
                     {/* Zoom Controls */}
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="icon" onClick={handleZoomOut}>
-                            <ZoomOut className="h-4 w-4" />
+                    <div className="flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleZoomOut}>
+                            <ZoomOut className="h-3.5 w-3.5" />
                         </Button>
-                        <span className="w-16 text-center text-sm">
+                        <span className="w-12 text-center text-xs font-medium tabular-nums">
                             {Math.round(scale * 100)}%
                         </span>
-                        <Button variant="outline" size="icon" onClick={handleZoomIn}>
-                            <ZoomIn className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleZoomIn}>
+                            <ZoomIn className="h-3.5 w-3.5" />
                         </Button>
                     </div>
                 </div>

@@ -103,11 +103,20 @@ router.get('/download/:type/:filename', async (req, res) => {
 router.get('/view/:type/:filename', async (req, res) => {
     try {
         const { type, filename } = req.params;
+        const isThumbnail = req.query.thumbnail === 'true';
+
         // Validate type
         if (!['templates', 'generated', 'signatures', 'bulk-zips'].includes(type)) {
             return res.status(400).json({ success: false, error: 'Invalid file type' });
         }
-        const url = storage.getPublicUrl(type as StorageType, filename);
+
+        let url = storage.getPublicUrl(type as StorageType, filename);
+
+        // If it's a thumbnail request, append ImageKit's thumbnail suffix
+        if (isThumbnail) {
+            url = `${url}/ik-thumbnail.jpg`;
+        }
+
         res.redirect(url);
     } catch (error) {
         res.status(404).json({ success: false, error: 'File not found' });
