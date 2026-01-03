@@ -100,7 +100,7 @@ export function GroupGenerateSingle({ group, onGenerated }: Props) {
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {template.attributes.map((attr) => (
+                    {template.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
                         <div key={attr.id} className="space-y-2">
                             <Label htmlFor={attr.id}>
                                 {attr.name}
@@ -119,7 +119,6 @@ export function GroupGenerateSingle({ group, onGenerated }: Props) {
                     <div className="space-y-2">
                         <Label htmlFor="email">
                             Recipient Email
-                            <span className="text-muted-foreground ml-1">(for Certificate ID)</span>
                         </Label>
                         <Input
                             id="email"
@@ -128,15 +127,12 @@ export function GroupGenerateSingle({ group, onGenerated }: Props) {
                             onChange={(e) => setRecipientEmail(e.target.value)}
                             placeholder="e.g., 24f3001856@ds.study.iitm.ac.in"
                         />
-                        <p className="text-xs text-muted-foreground">
-                            Last 4 digits before @ will be used in Certificate ID
-                        </p>
                     </div>
 
                     {result && (
                         <div className={`flex items-center gap-2 p-3 rounded-lg ${result.success
-                                ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                                : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
                             }`}>
                             {result.success ? (
                                 <CheckCircle2 className="h-4 w-4" />

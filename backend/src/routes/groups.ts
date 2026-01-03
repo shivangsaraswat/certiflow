@@ -340,7 +340,7 @@ router.post('/:id/generate/single', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
-        const template = await getTemplateById(group[0].templateId);
+        const template = await getTemplateById(group[0].templateId, userId);
         if (!template) {
             return res.status(400).json({ success: false, error: 'Template not found' });
         }
@@ -349,8 +349,11 @@ router.post('/:id/generate/single', async (req, res) => {
         const certificateCode = generateCertificateCode(template.code, recipientEmail);
         const filename = `${certificateCode}.pdf`;
 
+        // Inject certificateId into data for rendering
+        const renderData = { ...data, certificateId: certificateCode };
+
         // Render PDF
-        const pdfBuffer = await renderCertificate(template, data);
+        const pdfBuffer = await renderCertificate(template, renderData, recipientEmail);
 
         // Upload to storage
         const uploadPath = `generated/${filename}`;
@@ -363,13 +366,14 @@ router.post('/:id/generate/single', async (req, res) => {
             groupId,
             recipientName: recipientName || 'Unknown Recipient',
             recipientEmail: recipientEmail || null,
-            data,
+            data: renderData,
             filename,
             filepath: filename,
             fileUrl: uploadResult.url,
             fileId: uploadResult.id,
             generationMode: 'single',
-            bulkJobId: null
+            bulkJobId: null,
+            userId: userId
         });
 
         res.json({

@@ -167,10 +167,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         }
     };
 
-    const handleDeleteCertificate = async (id: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (!confirm('Are you sure you want to delete this certificate? This cannot be undone.')) return;
-
+    const handleDeleteCertificate = async (id: string) => {
         const res = await deleteCertificate(id, userId);
         if (res.success) {
             toast.success('Certificate deleted successfully');
@@ -262,9 +259,9 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
     const handleBulkStart = async () => {
         if (!group?.sheetId) return;
 
-        // Validate required fields
+        // Validate required fields (exclude system attributes like certificateId)
         const missing = template?.attributes
-            .filter(a => a.required && !columnMapping[a.id])
+            .filter(a => a.id !== 'certificateId' && a.required && !columnMapping[a.id])
             .map(a => a.name);
 
         if (missing && missing.length > 0) {
@@ -564,7 +561,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                         <DialogDescription>Fill in the details to generate a certificate</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
-                        {template?.attributes.map((attr) => (
+                        {template?.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
                             <div key={attr.id} className="space-y-2">
                                 <Label htmlFor={attr.id}>
                                     {attr.name}
@@ -582,7 +579,6 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                         <div className="space-y-2">
                             <Label htmlFor="email">
                                 Recipient Email
-                                <span className="text-muted-foreground ml-1 text-xs">(for Certificate ID)</span>
                             </Label>
                             <Input
                                 id="email"
@@ -591,9 +587,6 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                                 onChange={(e) => setRecipientEmail(e.target.value)}
                                 placeholder="e.g., 24f3001856@ds.study.iitm.ac.in"
                             />
-                            <p className="text-xs text-muted-foreground">
-                                Last 4 digits before @ will be used in Certificate ID
-                            </p>
                         </div>
                     </div>
                     <DialogFooter>
@@ -671,7 +664,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                         {bulkStep === 2 && (
                             <div className="space-y-4">
                                 <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                                    {template?.attributes.map((attr) => (
+                                    {template?.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
                                         <div key={attr.id} className="grid grid-cols-2 gap-4 items-center p-3 border rounded-lg">
                                             <div>
                                                 <p className="text-sm font-medium">{attr.name}</p>
@@ -815,9 +808,9 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={(e) => {
+                            onClick={() => {
                                 if (deleteId) {
-                                    handleDeleteCertificate(deleteId, e as any);
+                                    handleDeleteCertificate(deleteId);
                                     setDeleteId(null);
                                 }
                             }}
