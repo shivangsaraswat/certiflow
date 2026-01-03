@@ -11,7 +11,6 @@ import {
     LayoutDashboard,
     FileImage,
     FileOutput,
-    Files,
     PenTool,
     ChevronDown,
     Zap,
@@ -63,11 +62,6 @@ export function Sidebar() {
             title: 'Generate',
             href: '/generate',
             icon: FileOutput,
-        },
-        {
-            title: 'Bulk Generate',
-            href: '/generate/bulk',
-            icon: Files,
         },
         {
             title: 'Signatures',
