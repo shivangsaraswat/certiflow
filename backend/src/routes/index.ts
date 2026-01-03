@@ -1,0 +1,29 @@
+/**
+ * Route Aggregator
+ * Combines all API routes under a single router
+ */
+
+import { Router } from 'express';
+import templateRoutes from './templates.js';
+import generateRoutes from './generate.js';
+import fileRoutes from './files.js';
+
+const router = Router();
+
+// Mount route modules
+router.use('/templates', templateRoutes);
+router.use('/generate', generateRoutes);
+router.use('/files', fileRoutes);
+
+// Health check endpoint
+router.get('/health', (req, res) => {
+    res.json({
+        success: true,
+        data: {
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+        },
+    });
+});
+
+export default router;
