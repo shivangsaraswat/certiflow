@@ -30,9 +30,10 @@ import { createTemplate } from '@/lib/api';
 
 interface TemplateUploadFormProps {
     onSuccess?: () => void;
+    returnTo?: string;
 }
 
-export function TemplateUploadForm({ onSuccess }: TemplateUploadFormProps) {
+export function TemplateUploadForm({ onSuccess, returnTo }: TemplateUploadFormProps) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export function TemplateUploadForm({ onSuccess }: TemplateUploadFormProps) {
     const form = useForm<TemplateUploadData>({
         resolver: zodResolver(templateUploadSchema),
         defaultValues: {
+            code: '',
             name: '',
             description: '',
         },
@@ -51,6 +53,7 @@ export function TemplateUploadForm({ onSuccess }: TemplateUploadFormProps) {
 
         try {
             const formData = new FormData();
+            formData.append('code', data.code);
             formData.append('name', data.name);
             if (data.description) {
                 formData.append('description', data.description);
@@ -63,6 +66,12 @@ export function TemplateUploadForm({ onSuccess }: TemplateUploadFormProps) {
                 form.reset();
                 if (onSuccess) {
                     onSuccess();
+                } else if (returnTo) {
+                    // Return to the wizard with step info
+                    const params = new URLSearchParams(window.location.search);
+                    const wizardStep = params.get('wizardStep');
+                    const returnUrl = wizardStep ? `${returnTo}?wizardStep=${wizardStep}` : returnTo;
+                    router.push(returnUrl);
                 } else {
                     router.push('/templates');
                 }
@@ -109,6 +118,30 @@ export function TemplateUploadForm({ onSuccess }: TemplateUploadFormProps) {
                                     </FormControl>
                                     <FormDescription>
                                         Upload a high-quality PDF template. Vector graphics and fonts will be preserved.
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        {/* Template Code */}
+                        <FormField
+                            control={form.control}
+                            name="code"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Template Code *</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            placeholder="e.g., NAMD25"
+                                            {...field}
+                                            disabled={isLoading}
+                                            maxLength={5}
+                                            className="uppercase font-mono"
+                                        />
+                                    </FormControl>
+                                    <FormDescription>
+                                        1-5 character unique code used in certificate IDs
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>

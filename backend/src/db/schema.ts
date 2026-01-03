@@ -7,6 +7,7 @@ import { relations } from 'drizzle-orm';
 // =============================================================================
 export const templates = pgTable('templates', {
     id: text('id').primaryKey(), // using text for UUIDs provided by app
+    code: text('code').notNull().unique(), // 1-5 char unique template code (e.g., "NAMD25")
     name: text('name').notNull(),
     description: text('description'),
     filename: text('filename').notNull(),
@@ -24,6 +25,29 @@ export const templates = pgTable('templates', {
 export const templatesRelations = relations(templates, ({ many }) => ({
     certificates: many(certificates),
     bulkJobs: many(bulkJobs),
+    groups: many(groups),
+}));
+
+// =============================================================================
+// Groups - Container for organizing certificates
+// =============================================================================
+export const groups = pgTable('groups', {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    description: text('description'),
+    templateId: text('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
+    sheetId: text('sheet_id').references(() => spreadsheets.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+    template: one(templates, {
+        fields: [groups.templateId],
+        references: [templates.id],
+    }),
+    certificates: many(certificates),
+    bulkJobs: many(bulkJobs),
 }));
 
 // =============================================================================
@@ -33,7 +57,9 @@ export const certificates = pgTable('certificates', {
     id: text('id').primaryKey(),
     certificateCode: text('certificate_code').notNull().unique(),
     templateId: text('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'set null' }),
     recipientName: text('recipient_name').notNull(),
+    recipientEmail: text('recipient_email'), // Used for certificate ID generation
     data: jsonb('data').notNull(),
     filename: text('filename').notNull(),
     filepath: text('filepath').notNull(),
@@ -49,6 +75,10 @@ export const certificatesRelations = relations(certificates, ({ one }) => ({
         fields: [certificates.templateId],
         references: [templates.id],
     }),
+    group: one(groups, {
+        fields: [certificates.groupId],
+        references: [groups.id],
+    }),
     bulkJob: one(bulkJobs, {
         fields: [certificates.bulkJobId],
         references: [bulkJobs.id],
@@ -61,6 +91,7 @@ export const certificatesRelations = relations(certificates, ({ one }) => ({
 export const bulkJobs = pgTable('bulk_jobs', {
     id: text('id').primaryKey(),
     templateId: text('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'set null' }),
     sourceType: text('source_type').notNull(), // 'csv' | 'sheets'
     totalRecords: integer('total_records').notNull(),
     successful: integer('successful').default(0).notNull(),
@@ -79,6 +110,10 @@ export const bulkJobsRelations = relations(bulkJobs, ({ one, many }) => ({
     template: one(templates, {
         fields: [bulkJobs.templateId],
         references: [templates.id],
+    }),
+    group: one(groups, {
+        fields: [bulkJobs.groupId],
+        references: [groups.id],
     }),
     certificates: many(certificates),
 }));

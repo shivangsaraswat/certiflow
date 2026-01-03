@@ -152,20 +152,38 @@ export function BulkUploadForm() {
             const data = await res.json();
 
             if (data.success && data.data.content) {
-                const content = data.data.content[0]; // First sheet
-                if (content && content.celldata) {
-                    // Extract headers from row 0
-                    const headers: string[] = [];
-                    content.celldata.forEach((cell: any) => {
-                        if (cell.r === 0) {
-                            const val = cell.v?.m || cell.v?.v || '';
-                            if (val) headers[cell.c] = String(val);
+                const sheet = data.data.content[0]; // First sheet
+                const headers: string[] = [];
+
+                if (sheet) {
+                    // Handle celldata format (sparse array with {r, c, v} objects)
+                    if (sheet.celldata && Array.isArray(sheet.celldata) && sheet.celldata.length > 0) {
+                        sheet.celldata.forEach((cell: any) => {
+                            if (cell.r === 0) {
+                                const val = cell.v?.m || cell.v?.v || (typeof cell.v === 'string' ? cell.v : '');
+                                if (val) headers[cell.c] = String(val);
+                            }
+                        });
+                    }
+                    // Handle data format (2D array)
+                    else if (sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0) {
+                        const firstRow = sheet.data[0];
+                        if (Array.isArray(firstRow)) {
+                            firstRow.forEach((cell: any, colIndex: number) => {
+                                if (cell !== null && cell !== undefined) {
+                                    const val = cell?.m || cell?.v || (typeof cell === 'string' ? cell : '');
+                                    if (val) headers[colIndex] = String(val);
+                                }
+                            });
                         }
-                    });
-                    // Filter out empty slots if any (though usually dense)
-                    setSourceHeaders(headers.filter(Boolean));
+                    }
+                }
+
+                const filteredHeaders = headers.filter(Boolean);
+                if (filteredHeaders.length > 0) {
+                    setSourceHeaders(filteredHeaders);
                 } else {
-                    setError('Sheet seems empty or invalid');
+                    setError('No headers found in row 1. Make sure your spreadsheet has column headers.');
                 }
             } else {
                 setError('Failed to load spreadsheet data');
@@ -178,10 +196,17 @@ export function BulkUploadForm() {
     }, []);
 
     const handleMappingChange = useCallback((attrId: string, colName: string) => {
-        setColumnMapping((prev) => ({
-            ...prev,
-            [attrId]: colName,
-        }));
+        setColumnMapping((prev) => {
+            // Handle skip selection - remove the mapping
+            if (colName === '__skip__') {
+                const { [attrId]: _, ...rest } = prev;
+                return rest;
+            }
+            return {
+                ...prev,
+                [attrId]: colName,
+            };
+        });
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -366,14 +391,14 @@ export function BulkUploadForm() {
                                             </div>
                                             <div className="w-2/3">
                                                 <Select
-                                                    value={columnMapping[attr.id] || ''}
+                                                    value={columnMapping[attr.id] || '__skip__'}
                                                     onValueChange={(v) => handleMappingChange(attr.id, v)}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue placeholder="Select column" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="">-- Skip --</SelectItem>
+                                                        <SelectItem value="__skip__">-- Skip --</SelectItem>
                                                         {sourceHeaders.map((header) => (
                                                             <SelectItem key={header} value={header}>
                                                                 {header}
@@ -473,11 +498,15 @@ export function BulkUploadForm() {
                                         <div className="flex justify-between text-xs font-medium">
                                             <span>Completion</span>
                                             <span>
-                                                {Math.round((result.successful / result.totalRequested) * 100)}%
+                                                {result.totalRequested > 0
+                                                    ? Math.round((result.successful / result.totalRequested) * 100)
+                                                    : 0}%
                                             </span>
                                         </div>
                                         <Progress
-                                            value={(result.successful / result.totalRequested) * 100}
+                                            value={result.totalRequested > 0
+                                                ? (result.successful / result.totalRequested) * 100
+                                                : 0}
                                             className="h-2"
                                         />
                                     </div>

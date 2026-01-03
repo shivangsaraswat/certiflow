@@ -236,7 +236,41 @@ async function drawSignature(
 }
 
 /**
- * Generate a unique certificate ID
+ * Generate a unique certificate ID using template code and email
+ * Format: {TemplateCode}{Last4CharsBeforeEmail@}
+ * 
+ * Example:
+ * - Email: 24f3001856@ds.study.iitm.ac.in
+ * - Template Code: NAMD25
+ * - Result: NAMD251856
+ * 
+ * If email is not provided or invalid, uses random 4 characters as fallback
+ */
+export function generateCertificateCode(templateCode: string, email?: string): string {
+    // Ensure template code is uppercase
+    const code = (templateCode || 'CERT').toUpperCase();
+
+    if (email) {
+        const atIndex = email.indexOf('@');
+        if (atIndex >= 4) {
+            // Get last 4 characters before @
+            const last4 = email.substring(atIndex - 4, atIndex);
+            return `${code}${last4.toUpperCase()}`;
+        } else if (atIndex > 0) {
+            // Email local part is less than 4 chars, use what we have
+            const localPart = email.substring(0, atIndex);
+            return `${code}${localPart.toUpperCase()}`;
+        }
+    }
+
+    // Fallback: use random 4 alphanumeric characters
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${code}${random}`;
+}
+
+/**
+ * Legacy function - deprecated, use generateCertificateCode instead
+ * Kept for backward compatibility
  */
 export function generateCertificateId(templateId?: string, index?: number): string {
     const timestamp = Date.now().toString(36).toUpperCase();

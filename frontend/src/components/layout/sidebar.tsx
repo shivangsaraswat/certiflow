@@ -16,7 +16,8 @@ import {
     ChevronDown,
     Zap,
     LifeBuoy,
-    Database
+    Database,
+    FolderKanban
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,11 @@ const navItems = [
         title: 'Dashboard',
         href: '/',
         icon: LayoutDashboard,
+    },
+    {
+        title: 'Groups',
+        href: '/groups',
+        icon: FolderKanban,
     },
     {
         title: 'Templates',

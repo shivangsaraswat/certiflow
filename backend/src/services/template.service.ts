@@ -38,7 +38,26 @@ export async function deleteTemplate(id: string): Promise<boolean> {
  * Create template from file
  */
 // Create template from file
-export const createTemplate = async (file: Express.Multer.File, data?: { name?: string, description?: string }): Promise<Template> => {
+export const createTemplate = async (
+    file: Express.Multer.File,
+    data?: { name?: string, description?: string, code?: string }
+): Promise<Template> => {
+    // Validate code
+    if (!data?.code) {
+        throw new Error('Template code is required');
+    }
+
+    const code = data.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 1 || code.length > 5) {
+        throw new Error('Template code must be 1-5 alphanumeric characters');
+    }
+
+    // Check if code is unique
+    const existingCode = await db.select().from(templates).where(eq(templates.code, code));
+    if (existingCode.length > 0) {
+        throw new Error('Template code already exists');
+    }
+
     // 1. Read file buffer immediately to avoid re-fetching or file deletion issues
     let fileBuffer: Buffer;
     if (file.buffer) {
@@ -61,6 +80,7 @@ export const createTemplate = async (file: Express.Multer.File, data?: { name?: 
 
     const newTemplate = {
         id,
+        code,
         name: data?.name || file.originalname.replace(/\.pdf$/i, ''),
         description: data?.description || '',
         filename: uploadResult.name, // Use the name stored in ImageKit

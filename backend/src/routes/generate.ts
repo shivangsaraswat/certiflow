@@ -9,7 +9,8 @@ import {
 } from '../services/certificate.service.js';
 import {
     processBulkGeneration,
-    getCSVHeaders
+    getCSVHeaders,
+    getBulkJobById
 } from '../services/bulk.service.js';
 import { renderCertificate, generateCertificateId } from '../engine/renderer.js';
 import { uploadConfig } from '../middleware/upload.js';
@@ -79,6 +80,136 @@ router.post('/single', async (req, res) => {
     }
 });
 
+// Bulk Generation - Preview CSV headers
+router.post('/bulk/preview', upload.single('csv'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No CSV file uploaded' });
+        }
+
+        const headers = await getCSVHeaders(req.file.path);
+
+        // Cleanup temp file
+        fs.unlink(req.file.path, () => { });
+
+        res.json({
+            success: true,
+            data: { headers }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to process CSV' });
+    }
+});
+
+// Bulk Generation - Main endpoint (handles both CSV and Data Vault)
+router.post('/bulk', upload.single('csv'), async (req, res) => {
+    try {
+        const { templateId, columnMapping: mappingStr, sheetId, groupId } = req.body;
+
+        if (!templateId) {
+            return res.status(400).json({ success: false, error: 'Template ID is required' });
+        }
+
+        let columnMapping: Record<string, string>;
+        try {
+            columnMapping = JSON.parse(mappingStr);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Invalid column mapping' });
+        }
+
+        let source: any;
+
+        // Determine source type
+        if (sheetId) {
+            source = { type: 'sheet', id: sheetId };
+        } else if (req.file) {
+            source = { type: 'csv', path: req.file.path };
+        } else {
+            return res.status(400).json({ success: false, error: 'Either CSV file or sheetId is required' });
+        }
+
+        // Start bulk generation (with optional groupId)
+        const result = await processBulkGeneration(templateId, source, columnMapping, groupId || undefined);
+
+        // For immediate response, we return basic info
+        // The actual processing happens async, and we can poll the job
+        const job = await getBulkJobById(result);
+
+        // Wait a bit for quick jobs to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const updatedJob = await getBulkJobById(result);
+
+        if (updatedJob && updatedJob.status === 'completed') {
+            res.json({
+                success: true,
+                data: {
+                    jobId: result,
+                    totalRequested: updatedJob.totalRecords,
+                    successful: updatedJob.successful,
+                    failed: updatedJob.failed,
+                    errors: updatedJob.errors?.map((e: any) => ({ row: e.row, message: e.error })) || [],
+                    zipUrl: updatedJob.zipFileUrl || `/api/files/download/bulk-zips/${updatedJob.zipFilename}`
+                }
+            });
+        } else if (updatedJob && updatedJob.status === 'failed') {
+            res.json({
+                success: false,
+                error: 'Bulk generation failed',
+                data: {
+                    jobId: result,
+                    totalRequested: updatedJob.totalRecords,
+                    successful: updatedJob.successful,
+                    failed: updatedJob.failed,
+                    errors: updatedJob.errors?.map((e: any) => ({ row: e.row, message: e.error })) || []
+                }
+            });
+        } else {
+            // Still processing - return job ID for polling
+            res.json({
+                success: true,
+                data: {
+                    jobId: result,
+                    status: 'processing',
+                    message: 'Bulk generation started. Poll /api/generate/bulk/status/:jobId for updates.'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Bulk Generation Error:', error);
+        res.status(500).json({ success: false, error: (error as Error).message || 'Failed to start bulk generation' });
+    }
+});
+
+
+// Get Bulk Job Status
+router.get('/bulk/status/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const job = await getBulkJobById(id);
+
+        if (!job) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                jobId: job.id,
+                status: job.status,
+                totalRequested: job.totalRecords,
+                successful: job.successful,
+                failed: job.failed,
+                errors: job.errors?.map((e: any) => ({ row: e.row, message: e.error })) || [],
+                zipUrl: job.zipFileUrl || (job.zipFilename ? `/api/files/download/bulk-zips/${job.zipFilename}` : null)
+            }
+        });
+    } catch (error) {
+        console.error('Bulk Status Error:', error);
+        res.status(500).json({ success: false, error: 'Failed to check job status' });
+    }
+});
+
+// Legacy endpoints - keeping for backward compatibility
 // Bulk Generation - Step 1: Upload CSV and Get Headers
 router.post('/bulk/upload', upload.single('file'), async (req, res) => {
     try {

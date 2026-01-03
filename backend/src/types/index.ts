@@ -6,6 +6,7 @@
 // Template & Attribute Types
 export interface Template {
     id: string;
+    code: string; // 1-5 char unique template code (e.g., "NAMD25")
     name: string;
     description: string | null;
     filename: string;
@@ -47,7 +48,9 @@ export interface Certificate {
     id: string;
     certificateCode: string;
     templateId: string;
+    groupId?: string | null;
     recipientName: string;
+    recipientEmail?: string | null;
     data: any; // JSON payload
     filename: string; // generated filename
     filepath: string; // full path

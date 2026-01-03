@@ -6,6 +6,11 @@
 import { z } from 'zod';
 
 export const templateUploadSchema = z.object({
+    code: z.string()
+        .min(1, 'Template code is required')
+        .max(5, 'Code must be at most 5 characters')
+        .regex(/^[A-Za-z0-9]+$/, 'Code must be alphanumeric')
+        .transform(val => val.toUpperCase()),
     name: z.string().min(1, 'Template name is required').max(100, 'Name must be less than 100 characters'),
     description: z.string().max(500, 'Description must be less than 500 characters').optional(),
     template: z.instanceof(File, { message: 'Template file is required' })

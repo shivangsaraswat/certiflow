@@ -39,10 +39,15 @@ router.post('/', upload.single('template'), async (req, res) => {
             return res.status(400).json({ success: false, error: 'No PDF file uploaded' });
         }
 
+        if (!req.body.code) {
+            return res.status(400).json({ success: false, error: 'Template code is required' });
+        }
+
         // createTemplate now handles everything cleanly
         const template = await createTemplate(req.file, {
             name: req.body.name,
-            description: req.body.description
+            description: req.body.description,
+            code: req.body.code
         });
 
         const response: ApiResponse = {
@@ -50,9 +55,9 @@ router.post('/', upload.single('template'), async (req, res) => {
             data: template
         };
         res.status(201).json(response);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Create template error:', error);
-        res.status(500).json({ success: false, error: 'Failed to create template' });
+        res.status(400).json({ success: false, error: error.message || 'Failed to create template' });
     }
 });
 

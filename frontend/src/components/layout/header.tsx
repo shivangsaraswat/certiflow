@@ -10,12 +10,21 @@ import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Sidebar } from './sidebar';
+import { usePageTitle } from '@/components/providers/page-title-provider';
 
 export function Header() {
     const pathname = usePathname();
 
+    const { title } = usePageTitle();
+
     // Generate breadcrumb from pathname
     const getBreadcrumb = () => {
+        if (title) {
+            // If we have a custom title (like Group Name), use it
+            // Assuming format: "Groups / [Group Name]"
+            return `Groups / ${title}`;
+        }
+
         const segments = pathname.split('/').filter(Boolean);
         if (segments.length === 0) return 'Dashboard';
 

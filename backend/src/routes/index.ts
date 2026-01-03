@@ -9,6 +9,7 @@ import generateRoutes from './generate.js';
 import fileRoutes from './files.js';
 import historyRoutes from './history.js';
 import spreadsheetRoutes from './spreadsheets.js';
+import groupRoutes from './groups.js';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.use('/generate', generateRoutes);
 router.use('/files', fileRoutes);
 router.use('/history', historyRoutes);
 router.use('/spreadsheets', spreadsheetRoutes);
+router.use('/groups', groupRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

@@ -10,7 +10,7 @@ import { bulkJobs, certificates, spreadsheetData } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 
 import { config } from '../config/index.js';
-import { renderCertificate, generateCertificateId } from '../engine/renderer.js';
+import { renderCertificate, generateCertificateCode, generateCertificateId } from '../engine/renderer.js';
 import { storage } from './storage.service.js';
 import { getTemplateById } from './template.service.js';
 import type { Template } from '../types/index.js';
@@ -60,7 +60,8 @@ export async function getCSVHeaders(filepath: string): Promise<string[]> {
 export async function processBulkGeneration(
     templateId: string,
     source: { type: 'csv', path: string } | { type: 'sheet', id: string },
-    columnMapping: Record<string, string>
+    columnMapping: Record<string, string>,
+    groupId?: string
 ): Promise<string> {
     const jobId = uuidv4();
     const template = await getTemplateById(templateId);
@@ -92,24 +93,56 @@ export async function processBulkGeneration(
         // FortuneSheet content is array of sheets. We take the first one.
         const content = sheetData[0].content as any[];
         const sheet = content[0]; // Assume first sheet
-        if (!sheet || !sheet.celldata) {
+
+        if (!sheet) {
             throw new Error('Sheet is empty');
         }
 
-        // Convert celldata to row-based map
-        // celldata: [{ r: 0, c: 0, v: { v: "Value" } }]
-        const celldata = sheet.celldata;
+        // Build a grid from either celldata or data format
         const grid: Record<number, Record<number, string>> = {};
         let maxRow = 0;
         let maxCol = 0;
 
-        for (const cell of celldata) {
-            if (!grid[cell.r]) grid[cell.r] = {};
-            const val = cell.v?.m || cell.v?.v || ''; // m is display value, v is raw
-            grid[cell.r][cell.c] = String(val);
-            if (cell.r > maxRow) maxRow = cell.r;
-            if (cell.c > maxCol) maxCol = cell.c;
+        // Handle celldata format (sparse array with {r, c, v} objects)
+        if (sheet.celldata && Array.isArray(sheet.celldata) && sheet.celldata.length > 0) {
+            for (const cell of sheet.celldata) {
+                if (!grid[cell.r]) grid[cell.r] = {};
+                const val = cell.v?.m || cell.v?.v || (typeof cell.v === 'string' ? cell.v : '');
+                grid[cell.r][cell.c] = String(val);
+                if (cell.r > maxRow) maxRow = cell.r;
+                if (cell.c > maxCol) maxCol = cell.c;
+            }
         }
+        // Handle data format (2D array)
+        else if (sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0) {
+            // For 2D array, maxRow is simply the array length - 1
+            maxRow = sheet.data.length - 1;
+
+            for (let r = 0; r < sheet.data.length; r++) {
+                const row = sheet.data[r];
+                if (!row || !Array.isArray(row)) continue;
+                if (!grid[r]) grid[r] = {};
+
+                for (let c = 0; c < row.length; c++) {
+                    const cell = row[c];
+                    if (cell !== null && cell !== undefined && typeof cell === 'object') {
+                        const val = cell?.m || cell?.v || '';
+                        if (val) {
+                            grid[r][c] = String(val);
+                            if (c > maxCol) maxCol = c;
+                        }
+                    } else if (typeof cell === 'string' && cell) {
+                        grid[r][c] = cell;
+                        if (c > maxCol) maxCol = c;
+                    }
+                }
+            }
+        } else {
+            throw new Error('Sheet has no data in recognized format');
+        }
+
+        console.log(`[Bulk] Grid built. maxRow=${maxRow}, maxCol=${maxCol}`);
+        console.log(`[Bulk] Headers from row 0:`, grid[0]);
 
         // Row 0 is Headers
         const headers: Record<number, string> = {};
@@ -118,6 +151,8 @@ export async function processBulkGeneration(
                 headers[Number(c)] = val;
             });
         }
+
+        console.log(`[Bulk] Parsed headers:`, headers);
 
         // Rows 1+ are Data
         for (let i = 1; i <= maxRow; i++) {
@@ -138,12 +173,15 @@ export async function processBulkGeneration(
                 records.push(record);
             }
         }
+
+        console.log(`[Bulk] Total records extracted: ${records.length}`);
     }
 
     // 2. Create Job Record
     const newJob = {
         id: jobId,
         templateId,
+        groupId: groupId || null,
         sourceType: sourceType,
         totalRecords: records.length,
         status: 'processing',
@@ -157,7 +195,7 @@ export async function processBulkGeneration(
     await db.insert(bulkJobs).values(newJob as any);
 
     // 3. Start async processing
-    processBatch(jobId, template, records, columnMapping).catch(err => {
+    processBatch(jobId, template, records, columnMapping, groupId).catch(err => {
         console.error(`Bulk job ${jobId} crashed:`, err);
         updateJobStatus(jobId, 'failed');
     });
@@ -169,7 +207,8 @@ async function processBatch(
     jobId: string,
     template: Template,
     records: CSVRecord[],
-    columnMapping: Record<string, string>
+    columnMapping: Record<string, string>,
+    groupId?: string
 ) {
     // Only use temp dir for ZIP creation
     const tempDir = path.join(os.tmpdir(), 'certif-bulk');
@@ -190,16 +229,38 @@ async function processBatch(
         try {
             const certData: CertificateData = {};
 
-            // Map data
-            for (const [csvHeader, attrName] of Object.entries(columnMapping)) {
-                const attr = template.attributes.find(a => a.name === attrName);
+            // Map data from source columns to template attributes
+            // columnMapping is { sourceColumn: attrId }
+            for (const [sourceColumn, attrId] of Object.entries(columnMapping)) {
+                // Find attribute by ID (frontend sends attribute IDs, not names)
+                const attr = template.attributes.find(a => a.id === attrId);
                 if (attr) {
-                    certData[attr.id] = record[csvHeader];
+                    certData[attr.id] = record[sourceColumn] || '';
                 }
             }
 
-            // Generate Certificate
-            const certId = generateCertificateId(template.id, index);
+            console.log(`[Bulk] Row ${index + 1} certData:`, JSON.stringify(certData));
+
+            // Try to find email in the record (look for common email field names)
+            let recipientEmail: string | undefined;
+            const emailKeys = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'email_address', 'email address'];
+            for (const key of emailKeys) {
+                if (record[key]) {
+                    recipientEmail = record[key];
+                    break;
+                }
+            }
+            // Also check if any column was mapped to email
+            for (const [sourceCol, attrId] of Object.entries(columnMapping)) {
+                const attr = template.attributes.find(a => a.id === attrId);
+                if (attr && attr.name.toLowerCase().includes('email')) {
+                    recipientEmail = record[sourceCol] || recipientEmail;
+                    break;
+                }
+            }
+
+            // Generate Certificate ID using template code and email
+            const certId = generateCertificateCode(template.code, recipientEmail);
             const filename = `${certId}.pdf`;
 
             // Render to Buffer (No local file save)
@@ -212,13 +273,15 @@ async function processBatch(
             // Add Buffer to ZIP stream
             archive.append(pdfBuffer, { name: filename });
 
-            // Track in Database
+            // Track in Database - find recipient name from first text attribute
             const recipientName = certData[template.attributes[0]?.id] || 'Unknown';
 
             await createCertificateRecord({
                 certificateCode: certId,
                 templateId: template.id,
+                groupId: groupId || null,
                 recipientName: recipientName,
+                recipientEmail: recipientEmail || null,
                 data: certData,
                 filename: filename,
                 filepath: filename, // Legacy
