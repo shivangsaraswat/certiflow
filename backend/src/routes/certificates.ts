@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
 import { certificates } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { storage } from '../services/storage.service.js';
 
 const router = Router();
@@ -12,8 +12,12 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        // 1. Get certificate details to find fileId
-        const certRecord = await db.select().from(certificates).where(eq(certificates.id, id));
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // 1. Get certificate details to find fileId (and verify ownership)
+        const certRecord = await db.select().from(certificates)
+            .where(sql`${certificates.id} = ${id} AND ${certificates.userId} = ${userId}`);
 
         if (!certRecord[0]) {
             return res.status(404).json({ success: false, error: 'Certificate not found' });
@@ -24,7 +28,7 @@ router.delete('/:id', async (req, res) => {
         // 2. Delete file from storage (ImageKit)
         if (cert.fileId) {
             try {
-                await storage.deleteFile(cert.fileId);
+                await storage.deleteFile('generated', cert.filename);
             } catch (err) {
                 console.error(`[Delete] Failed to delete file ${cert.fileId} from storage:`, err);
                 // Continue with DB deletion even if storage fails

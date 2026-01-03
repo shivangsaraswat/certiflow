@@ -1,6 +1,7 @@
 
-import { pgTable, text, timestamp, integer, doublePrecision, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, doublePrecision, jsonb, boolean, primaryKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import type { AdapterAccount } from '@auth/core/adapters';
 
 // =============================================================================
 // Templates
@@ -18,6 +19,8 @@ export const templates = pgTable('templates', {
     width: doublePrecision('width').notNull(),
     height: doublePrecision('height').notNull(),
     attributes: jsonb('attributes').notNull(), // DynamicAttribute[]
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    isPublic: boolean('is_public').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -37,6 +40,7 @@ export const groups = pgTable('groups', {
     description: text('description'),
     templateId: text('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
     sheetId: text('sheet_id').references(() => spreadsheets.id, { onDelete: 'set null' }),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -67,6 +71,7 @@ export const certificates = pgTable('certificates', {
     fileId: text('file_id'),
     generationMode: text('generation_mode').notNull(), // 'single' | 'bulk'
     bulkJobId: text('bulk_job_id').references(() => bulkJobs.id, { onDelete: 'set null' }),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -102,6 +107,7 @@ export const bulkJobs = pgTable('bulk_jobs', {
     zipFileUrl: text('zip_file_url'),
     zipFileId: text('zip_file_id'),
     errors: jsonb('errors'),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -124,6 +130,7 @@ export const bulkJobsRelations = relations(bulkJobs, ({ one, many }) => ({
 export const spreadsheets = pgTable('spreadsheets', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -147,3 +154,85 @@ export const spreadsheetDataRelations = relations(spreadsheetData, ({ one }) => 
         references: [spreadsheets.id],
     }),
 }));
+
+// =============================================================================
+// Auth & System
+// =============================================================================
+
+export const users = pgTable("user", {
+    id: text("id")
+        .primaryKey()
+        .$defaultFn(() => crypto.randomUUID()),
+    name: text("name"),
+    email: text("email").notNull(),
+    emailVerified: timestamp("emailVerified", { mode: "date" }),
+    image: text("image"),
+    role: text("role").$type<"admin" | "user">().default("user"),
+    isAllowed: boolean("is_allowed").default(false), // Admin must approve
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const accounts = pgTable(
+    "account",
+    {
+        userId: text("userId")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        type: text("type").$type<AdapterAccount["type"]>().notNull(),
+        provider: text("provider").notNull(),
+        providerAccountId: text("providerAccountId").notNull(),
+        refresh_token: text("refresh_token"),
+        access_token: text("access_token"),
+        expires_at: integer("expires_at"),
+        token_type: text("token_type"),
+        scope: text("scope"),
+        id_token: text("id_token"),
+        session_state: text("session_state"),
+    },
+    (account) => ({
+        compoundKey: primaryKey({
+            columns: [account.provider, account.providerAccountId],
+        }),
+    })
+);
+
+export const sessions = pgTable("session", {
+    sessionToken: text("sessionToken").primaryKey(),
+    userId: text("userId")
+        .notNull()
+        .references(() => users.id, { onDelete: "cascade" }),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+});
+
+export const verificationTokens = pgTable(
+    "verificationToken",
+    {
+        identifier: text("identifier").notNull(),
+        token: text("token").notNull(),
+        expires: timestamp("expires", { mode: "date" }).notNull(),
+    },
+    (verificationToken) => ({
+        compositePk: primaryKey({
+            columns: [verificationToken.identifier, verificationToken.token],
+        }),
+    })
+);
+
+export const systemSettings = pgTable("system_settings", {
+    id: text("id").primaryKey().$defaultFn(() => "global"),
+    allowSignups: boolean("allow_signups").default(false).notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// =============================================================================
+// Signatures
+// =============================================================================
+export const signatures = pgTable('signatures', {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    filename: text('filename').notNull(),
+    fileUrl: text('file_url').notNull(),
+    fileId: text('file_id'), // ImageKit ID
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});

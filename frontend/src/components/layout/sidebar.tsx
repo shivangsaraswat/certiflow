@@ -17,59 +17,83 @@ import {
     Zap,
     LifeBuoy,
     Database,
-    FolderKanban
+    FolderKanban,
+    Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useSession, signOut } from "next-auth/react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
-const navItems = [
-    {
-        title: 'Dashboard',
-        href: '/',
-        icon: LayoutDashboard,
-    },
-    {
-        title: 'Groups',
-        href: '/groups',
-        icon: FolderKanban,
-    },
-    {
-        title: 'Templates',
-        href: '/templates',
-        icon: FileImage,
-    },
-    {
-        title: 'Generate',
-        href: '/generate',
-        icon: FileOutput,
-    },
-    {
-        title: 'Bulk Generate',
-        href: '/generate/bulk',
-        icon: Files,
-    },
-    {
-        title: 'Signatures',
-        href: '/signatures',
-        icon: PenTool,
-    },
-    {
-        title: 'Data Vault',
-        href: '/data-vault',
-        icon: Database,
-    },
-];
+
+
+
 
 export function Sidebar() {
     const pathname = usePathname();
+    const { data: session } = useSession();
+    const user = session?.user;
+
+    console.log("[Sidebar Debug] Current User:", user);
+
+    const items = [
+        {
+            title: 'Dashboard',
+            href: '/dashboard',
+            icon: LayoutDashboard,
+        },
+        {
+            title: 'Groups',
+            href: '/groups',
+            icon: FolderKanban,
+        },
+        {
+            title: 'Templates',
+            href: '/templates',
+            icon: FileImage,
+        },
+        {
+            title: 'Generate',
+            href: '/generate',
+            icon: FileOutput,
+        },
+        {
+            title: 'Bulk Generate',
+            href: '/generate/bulk',
+            icon: Files,
+        },
+        {
+            title: 'Signatures',
+            href: '/signatures',
+            icon: PenTool,
+        },
+        {
+            title: 'Data Vault',
+            href: '/data-vault',
+            icon: Database,
+        },
+    ];
+
+    if (user?.role === 'admin') {
+        items.push({
+            title: 'Admin',
+            href: '/admin',
+            icon: Settings,
+        });
+    }
 
     return (
         <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r bg-sidebar text-sidebar-foreground">
             {/* Logo */}
             <div className="flex h-16 items-center px-6">
-                <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
+                <Link href="/dashboard" className="flex items-center gap-2 font-bold tracking-tight">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Zap className="h-4 w-4" fill="currentColor" />
                     </div>
@@ -79,9 +103,9 @@ export function Sidebar() {
 
             {/* Navigation */}
             <nav className="flex-1 space-y-1 px-3 py-4">
-                {navItems.map((item) => {
+                {items.map((item) => {
                     const isActive = pathname === item.href ||
-                        (item.href !== '/' && pathname.startsWith(item.href));
+                        (item.href !== '/dashboard' && pathname.startsWith(item.href));
 
                     return (
                         <Link
@@ -103,35 +127,32 @@ export function Sidebar() {
 
             {/* Bottom Stack */}
             <div className="mt-auto space-y-4 p-4">
-                {/* Upgrade Card */}
-                <div className="rounded-xl border bg-card p-4 shadow-sm">
-                    <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-semibold">Starter Plan</span>
-                        <span className="text-xs text-muted-foreground">Free</span>
-                    </div>
-                    <div className="mb-3 space-y-1">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Credential Usage</span>
-                            <span>0/250</span>
-                        </div>
-                        <Progress value={0} className="h-1.5" />
-                    </div>
-                    <Button size="sm" className="w-full text-xs font-semibold" variant="default">
-                        Upgrade
-                    </Button>
-                </div>
+
 
                 {/* User Profile */}
-                <div className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm hover:bg-accent cursor-pointer transition-colors">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                        <span className="text-xs font-semibold">JD</span>
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                        <p className="truncate text-sm font-medium">John Doe</p>
-                        <p className="truncate text-xs text-muted-foreground">john@example.com</p>
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </div>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <div className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm hover:bg-accent cursor-pointer transition-colors">
+                            <Avatar className="h-8 w-8 rounded-full">
+                                <AvatarImage src={user?.image || ""} />
+                                <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 overflow-hidden text-left">
+                                <p className="truncate text-sm font-medium">{user?.name || "User"}</p>
+                                <div className="flex items-center gap-1">
+                                    <p className="truncate text-xs text-muted-foreground">{user?.email || "user@example.com"}</p>
+                                    {user?.role && <span className="text-[10px] bg-primary/10 text-primary px-1 rounded uppercase font-bold">{user.role}</span>}
+                                </div>
+                            </div>
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem onClick={() => signOut()}>
+                            Log out
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </aside>
     );

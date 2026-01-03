@@ -26,7 +26,7 @@ async function fetchApi<T>(
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             ...options,
             headers: {
-                ...options?.headers,
+                ...(options?.headers as Record<string, string>),
             },
         });
 
@@ -47,28 +47,37 @@ async function fetchApi<T>(
 // Template API
 // =============================================================================
 
-export async function getTemplates(): Promise<ApiResponse<Template[]>> {
-    return fetchApi<Template[]>('/templates');
+export async function getTemplates(userId?: string): Promise<ApiResponse<Template[]>> {
+    return fetchApi<Template[]>('/templates', {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }
 
-export async function getTemplate(id: string): Promise<ApiResponse<Template>> {
-    return fetchApi<Template>(`/templates/${id}`);
+export async function getTemplate(id: string, userId?: string): Promise<ApiResponse<Template>> {
+    return fetchApi<Template>(`/templates/${id}`, {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }
 
-export async function createTemplate(formData: FormData): Promise<ApiResponse<Template>> {
+export async function createTemplate(formData: FormData, userId?: string): Promise<ApiResponse<Template>> {
     return fetchApi<Template>('/templates', {
         method: 'POST',
+        headers: userId ? { 'x-user-id': userId } : undefined,
         body: formData,
     });
 }
 
 export async function updateTemplate(
     id: string,
-    data: { name?: string; description?: string }
+    data: { name?: string; description?: string },
+    userId?: string
 ): Promise<ApiResponse<Template>> {
     return fetchApi<Template>(`/templates/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify(data),
     });
 }
@@ -78,11 +87,15 @@ export async function updateTemplate(
  */
 export async function updateTemplateAttributes(
     id: string,
-    attributes: DynamicAttribute[]
+    attributes: DynamicAttribute[],
+    userId?: string
 ): Promise<ApiResponse<Template>> {
     return fetchApi<Template>(`/templates/${id}/attributes`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify({ attributes }),
     });
 }
@@ -92,11 +105,15 @@ export async function updateTemplateAttributes(
  */
 export async function addTemplateAttribute(
     id: string,
-    attribute: Omit<DynamicAttribute, 'id'>
+    attribute: Omit<DynamicAttribute, 'id'>,
+    userId?: string
 ): Promise<ApiResponse<Template>> {
     return fetchApi<Template>(`/templates/${id}/attributes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify(attribute),
     });
 }
@@ -106,16 +123,19 @@ export async function addTemplateAttribute(
  */
 export async function removeTemplateAttribute(
     id: string,
-    attributeId: string
+    attributeId: string,
+    userId?: string
 ): Promise<ApiResponse<Template>> {
     return fetchApi<Template>(`/templates/${id}/attributes/${attributeId}`, {
         method: 'DELETE',
+        headers: userId ? { 'x-user-id': userId } : undefined,
     });
 }
 
-export async function deleteTemplate(id: string): Promise<ApiResponse<{ deleted: boolean }>> {
+export async function deleteTemplate(id: string, userId?: string): Promise<ApiResponse<{ deleted: boolean }>> {
     return fetchApi<{ deleted: boolean }>(`/templates/${id}`, {
         method: 'DELETE',
+        headers: userId ? { 'x-user-id': userId } : undefined,
     });
 }
 
@@ -125,20 +145,26 @@ export async function deleteTemplate(id: string): Promise<ApiResponse<{ deleted:
 
 export async function generateSingleCertificate(
     templateId: string,
-    data: CertificateData
+    data: CertificateData,
+    userId?: string
 ): Promise<ApiResponse<GenerationResult>> {
     return fetchApi<GenerationResult>('/generate/single', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify({ templateId, data }),
     });
 }
 
 export async function generateBulkCertificates(
-    formData: FormData
+    formData: FormData,
+    userId?: string
 ): Promise<ApiResponse<BulkGenerationResult>> {
     return fetchApi<BulkGenerationResult>('/generate/bulk', {
         method: 'POST',
+        headers: userId ? { 'x-user-id': userId } : undefined,
         body: formData,
     });
 }
@@ -156,20 +182,24 @@ export async function previewCSVHeaders(
 // Signature API
 // =============================================================================
 
-export async function getSignatures(): Promise<ApiResponse<Signature[]>> {
-    return fetchApi<Signature[]>('/files/signatures');
+export async function getSignatures(userId?: string): Promise<ApiResponse<Signature[]>> {
+    return fetchApi<Signature[]>('/files/signatures', {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }
 
-export async function uploadSignature(formData: FormData): Promise<ApiResponse<Signature>> {
-    return fetchApi<Signature>('/files/signature', {
+export async function uploadSignature(formData: FormData, userId?: string): Promise<ApiResponse<Signature>> {
+    return fetchApi<Signature>('/files/signatures', {
         method: 'POST',
+        headers: userId ? { 'x-user-id': userId } : undefined,
         body: formData,
     });
 }
 
-export async function deleteSignature(id: string): Promise<ApiResponse<{ deleted: boolean }>> {
-    return fetchApi<{ deleted: boolean }>(`/files/signature/${id}`, {
+export async function deleteSignature(id: string, userId?: string): Promise<ApiResponse<{ deleted: boolean }>> {
+    return fetchApi<{ deleted: boolean }>(`/files/signatures/${id}`, {
         method: 'DELETE',
+        headers: userId ? { 'x-user-id': userId } : undefined,
     });
 }
 
@@ -192,18 +222,25 @@ export function getViewUrl(type: string, filename: string, thumbnail?: boolean):
 
 import type { Group, GroupCertificate } from '@/types';
 
-export async function getGroups(): Promise<ApiResponse<Group[]>> {
-    return fetchApi<Group[]>('/groups');
+export async function getGroups(userId?: string): Promise<ApiResponse<Group[]>> {
+    return fetchApi<Group[]>('/groups', {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }
 
-export async function getGroup(id: string): Promise<ApiResponse<Group>> {
-    return fetchApi<Group>(`/groups/${id}`);
+export async function getGroup(id: string, userId?: string): Promise<ApiResponse<Group>> {
+    return fetchApi<Group>(`/groups/${id}`, {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }
 
-export async function createGroup(data: { name: string; description?: string; templateId: string; sheetId?: string }): Promise<ApiResponse<Group>> {
+export async function createGroup(data: { name: string; description?: string; templateId: string; sheetId?: string }, userId?: string): Promise<ApiResponse<Group>> {
     return fetchApi<Group>('/groups', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify(data),
     });
 }
@@ -216,20 +253,26 @@ export async function updateGroup(id: string, data: { name?: string; description
     });
 }
 
-export async function deleteGroup(id: string): Promise<ApiResponse<{ deleted: boolean }>> {
+export async function deleteGroup(id: string, userId?: string): Promise<ApiResponse<{ deleted: boolean }>> {
     return fetchApi<{ deleted: boolean }>(`/groups/${id}`, {
         method: 'DELETE',
+        headers: userId ? { 'x-user-id': userId } : undefined,
     });
 }
 
-export async function getGroupCertificates(groupId: string, limit = 50, offset = 0): Promise<ApiResponse<{ certificates: GroupCertificate[]; total: number }>> {
-    return fetchApi<{ certificates: GroupCertificate[]; total: number }>(`/groups/${groupId}/certificates?limit=${limit}&offset=${offset}`);
+export async function getGroupCertificates(groupId: string, userId?: string, limit = 50, offset = 0): Promise<ApiResponse<{ certificates: GroupCertificate[]; total: number }>> {
+    return fetchApi<{ certificates: GroupCertificate[]; total: number }>(`/groups/${groupId}/certificates?limit=${limit}&offset=${offset}`, {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }
 
-export async function generateSingleInGroup(groupId: string, data: { data: Record<string, string>; recipientName?: string; recipientEmail?: string }): Promise<ApiResponse<GenerationResult>> {
+export async function generateSingleInGroup(groupId: string, data: { data: Record<string, string>; recipientName?: string; recipientEmail?: string }, userId?: string): Promise<ApiResponse<GenerationResult>> {
     return fetchApi<GenerationResult>(`/groups/${groupId}/generate/single`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
         body: JSON.stringify(data),
     });
 }
@@ -241,12 +284,15 @@ export async function generateBulkInGroup(groupId: string, formData: FormData): 
     });
 }
 
-export async function deleteCertificate(id: string): Promise<ApiResponse<{ message: string }>> {
+export async function deleteCertificate(id: string, userId?: string): Promise<ApiResponse<{ message: string }>> {
     return fetchApi<{ message: string }>(`/certificates/${id}`, {
         method: 'DELETE',
+        headers: userId ? { 'x-user-id': userId } : undefined,
     });
 }
 
-export async function getBulkJobStatus(jobId: string): Promise<ApiResponse<BulkGenerationResult>> {
-    return fetchApi<BulkGenerationResult>(`/generate/bulk/status/${jobId}`);
+export async function getBulkJobStatus(jobId: string, userId?: string): Promise<ApiResponse<BulkGenerationResult>> {
+    return fetchApi<BulkGenerationResult>(`/generate/bulk/status/${jobId}`, {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
 }

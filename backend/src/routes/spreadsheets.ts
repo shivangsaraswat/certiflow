@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
 import { spreadsheets, spreadsheetData } from '../db/schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
@@ -10,7 +10,15 @@ const router = Router();
 // GET /api/spreadsheets - List all spreadsheets
 router.get('/', async (req, res) => {
     try {
-        const result = await db.select().from(spreadsheets).orderBy(desc(spreadsheets.updatedAt));
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const result = await db
+            .select()
+            .from(spreadsheets)
+            .where(eq(spreadsheets.userId, userId))
+            .orderBy(desc(spreadsheets.updatedAt));
+
         res.json({ success: true, data: result });
     } catch (error) {
         console.error('Failed to list spreadsheets:', error);
@@ -22,7 +30,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const sheet = await db.select().from(spreadsheets).where(eq(spreadsheets.id, id));
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const sheet = await db.select().from(spreadsheets)
+            .where(sql`${spreadsheets.id} = ${id} AND ${spreadsheets.userId} = ${userId}`);
 
         if (sheet.length === 0) {
             return res.status(404).json({ success: false, error: 'Spreadsheet not found' });
@@ -47,6 +59,9 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const { name, content } = req.body;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         const id = uuidv4();
 
         // Transaction to create sheet and initial data
@@ -54,6 +69,7 @@ router.post('/', async (req, res) => {
             await tx.insert(spreadsheets).values({
                 id,
                 name: name || 'Untitled Spreadsheet',
+                userId: userId,
             });
 
             if (content) {
@@ -89,8 +105,12 @@ router.put('/:id', async (req, res) => {
 
         console.log(`[Spreadsheet PUT] Updating ${id}. Name: ${name ? 'YES' : 'NO'}, Content size: ${content ? JSON.stringify(content).length : '0'}`);
 
-        // Verify exists
-        const sheet = await db.select().from(spreadsheets).where(eq(spreadsheets.id, id));
+        // Verify exists and ownership
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const sheet = await db.select().from(spreadsheets)
+            .where(sql`${spreadsheets.id} = ${id} AND ${spreadsheets.userId} = ${userId}`);
         if (sheet.length === 0) {
             return res.status(404).json({ success: false, error: 'Spreadsheet not found' });
         }
@@ -136,7 +156,12 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await db.delete(spreadsheets).where(eq(spreadsheets.id, id)).returning();
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const result = await db.delete(spreadsheets)
+            .where(sql`${spreadsheets.id} = ${id} AND ${spreadsheets.userId} = ${userId}`)
+            .returning();
 
         if (result.length === 0) {
             return res.status(404).json({ success: false, error: 'Spreadsheet not found' });

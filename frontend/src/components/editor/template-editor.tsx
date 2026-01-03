@@ -19,6 +19,7 @@ import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { updateTemplateAttributes, getViewUrl } from '@/lib/api';
 import type { Template, DynamicAttribute } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
+import { useSession } from 'next-auth/react';
 
 interface TemplateEditorProps {
     template: Template;
@@ -27,6 +28,8 @@ interface TemplateEditorProps {
 
 export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
     const router = useRouter();
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [attributes, setAttributes] = useState<DynamicAttribute[]>(template.attributes);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [scale, setScale] = useState(0.8);
@@ -106,7 +109,8 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
         setError(null);
 
         try {
-            const res = await updateTemplateAttributes(template.id, attributes);
+            if (!userId) throw new Error("Unauthorized");
+            const res = await updateTemplateAttributes(template.id, attributes, userId);
             if (res.success) {
                 setHasChanges(false);
                 if (onSave) {

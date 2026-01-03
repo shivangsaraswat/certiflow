@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Save, Loader2, Cloud, CheckCircle2 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 
 /**
  * Convert FortuneSheet's internal 2D `data` array format back to sparse `celldata` format.
@@ -69,6 +70,8 @@ function SheetEditorContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const id = params?.id as string;
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
 
     // Return navigation support for wizard flow
     const returnTo = searchParams.get('returnTo');
@@ -78,20 +81,21 @@ function SheetEditorContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
-
     // We'll use a ref to track if content has changed to debounce saves
     const contentRef = useRef<any>(null);
 
     useEffect(() => {
-        if (id) {
+        if (id && userId) {
             loadSheet(id);
         }
-    }, [id]);
+    }, [id, userId]);
 
     const loadSheet = async (sheetId: string) => {
         try {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const res = await fetch(`${baseUrl}/api/spreadsheets/${sheetId}`);
+            const res = await fetch(`${baseUrl}/api/spreadsheets/${sheetId}`, {
+                headers: { 'x-user-id': userId || '' }
+            });
             const data = await res.json();
 
             if (data.success) {
@@ -145,7 +149,10 @@ function SheetEditorContent() {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/spreadsheets/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': userId || ''
+                },
                 body: JSON.stringify({
                     content: dataToSave
                 }),
@@ -210,7 +217,10 @@ function SheetEditorContent() {
                                     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
                                     fetch(`${baseUrl}/api/spreadsheets/${id}`, {
                                         method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json' },
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'x-user-id': userId || ''
+                                        },
                                         body: JSON.stringify({ name: e.target.value }),
                                     });
                                 }

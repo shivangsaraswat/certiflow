@@ -49,6 +49,9 @@ router.post('/single', async (req, res) => {
         const uploadPath = `generated/${filename}`;
         const uploadResult = await storage.uploadBuffer(pdfBuffer, uploadPath);
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         // Save Record
         await createCertificateRecord({
             certificateCode,
@@ -60,7 +63,8 @@ router.post('/single', async (req, res) => {
             fileUrl: uploadResult.url,
             fileId: uploadResult.id,
             generationMode: 'single',
-            bulkJobId: null
+            bulkJobId: null,
+            userId: userId
         });
 
         const response: ApiResponse<GenerationResult> = {
@@ -128,8 +132,11 @@ router.post('/bulk', upload.single('csv'), async (req, res) => {
             return res.status(400).json({ success: false, error: 'Either CSV file or sheetId is required' });
         }
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         // Start bulk generation (with optional groupId)
-        const result = await processBulkGeneration(templateId, source, columnMapping, groupId || undefined);
+        const result = await processBulkGeneration(templateId, source, columnMapping, groupId || undefined, userId);
 
         // For immediate response, we return basic info
         // The actual processing happens async, and we can poll the job
@@ -187,7 +194,14 @@ router.get('/bulk/status/:id', async (req, res) => {
         const { id } = req.params;
         const job = await getBulkJobById(id);
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         if (!job) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+
+        if (job.userId !== userId) {
             return res.status(404).json({ success: false, error: 'Job not found' });
         }
 

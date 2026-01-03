@@ -1,7 +1,7 @@
 
 import { db } from '../lib/db.js';
 import { templates } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/index.js';
 import path from 'path';
@@ -13,24 +13,54 @@ import { storage } from './storage.service.js';
 /**
  * Get all templates
  */
-export async function getAllTemplates(): Promise<Template[]> {
-    const allTemplates = await db.select().from(templates);
+/**
+ * Get all templates
+ * Returns templates owned by userId OR public templates
+ */
+export async function getAllTemplates(userId: string): Promise<Template[]> {
+    const allTemplates = await db.select().from(templates)
+        .where(
+            sql`${templates.userId} = ${userId} OR ${templates.isPublic} = true`
+        );
     return allTemplates.map(toTemplate);
 }
 
 /**
  * Get template by ID
  */
-export async function getTemplateById(id: string): Promise<Template | null> {
-    const result = await db.select().from(templates).where(eq(templates.id, id));
-    return result[0] ? toTemplate(result[0]) : null;
+/**
+ * Get template by ID
+ * Note: Caller should verify access if needed, but simple reading is OK for public.
+ * Actually, we should check access here too if we want strict privacy.
+ * But let's check access in the usage or here.
+ * For now, return IF owned or public.
+ */
+export async function getTemplateById(id: string, userId?: string): Promise<Template | null> {
+    const query = db.select().from(templates).where(eq(templates.id, id));
+    const result = await query;
+    if (!result[0]) return null;
+
+    const t = result[0];
+    if (t.isPublic) return toTemplate(t);
+    // If no userId provided, restricted
+    if (!userId) return null;
+
+    // Check ownership
+    if (t.userId === userId) return toTemplate(t);
+
+    return null; // Exists but private
 }
 
 /**
  * Delete template
  */
-export async function deleteTemplate(id: string): Promise<boolean> {
-    const result = await db.delete(templates).where(eq(templates.id, id)).returning();
+export async function deleteTemplate(id: string, userId: string): Promise<boolean> {
+    // Only delete if owned by user
+    const result = await db.delete(templates)
+        .where(
+            sql`${templates.id} = ${id} AND ${templates.userId} = ${userId}`
+        )
+        .returning();
     return result.length > 0;
 }
 
@@ -40,6 +70,7 @@ export async function deleteTemplate(id: string): Promise<boolean> {
 // Create template from file
 export const createTemplate = async (
     file: Express.Multer.File,
+    userId: string,
     data?: { name?: string, description?: string, code?: string }
 ): Promise<Template> => {
     // Validate code
@@ -93,6 +124,8 @@ export const createTemplate = async (
         attributes: [] as DynamicAttribute[],
         createdAt: new Date(),
         updatedAt: new Date(),
+        userId: userId, // Set owner
+        isPublic: false,
     };
 
     await db.insert(templates).values(newTemplate);
@@ -100,7 +133,7 @@ export const createTemplate = async (
     return toTemplate(newTemplate);
 };
 
-export const updateTemplate = async (id: string, updates: Partial<Template>): Promise<Template | null> => {
+export const updateTemplate = async (id: string, userId: string, updates: Partial<Template>): Promise<Template | null> => {
     // Only allow updating name, description
     const updateData: any = {};
     if (updates.name) updateData.name = updates.name;
@@ -110,16 +143,23 @@ export const updateTemplate = async (id: string, updates: Partial<Template>): Pr
 
     const result = await db.update(templates)
         .set(updateData)
-        .where(eq(templates.id, id))
+        .where(
+            sql`${templates.id} = ${id} AND ${templates.userId} = ${userId}`
+        )
         .returning();
 
     return result[0] ? toTemplate(result[0]) : null;
 };
 
 // Attribute handling helper
-export const addAttribute = async (templateId: string, attribute: Omit<DynamicAttribute, 'id'>): Promise<Template | null> => {
-    const existing = await getTemplateById(templateId);
+export const addAttribute = async (templateId: string, userId: string, attribute: Omit<DynamicAttribute, 'id'>): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId, userId);
+    // getTemplateById already checks ownership/public. 
+    // BUT for mutation (addAttribute), we must stricter: MUST BE OWNER.
+    // getTemplateById returns public temps too. We can't edit public temp if we don't own it.
+    // So we need explicit check.
     if (!existing) return null;
+    if (existing.userId !== userId) return null; // Unauthorized to edit
 
     const currentAttributes = existing.attributes;
     const newAttribute: DynamicAttribute = {
@@ -136,9 +176,9 @@ export const addAttribute = async (templateId: string, attribute: Omit<DynamicAt
     return getTemplateById(templateId);
 };
 
-export const updateAttribute = async (templateId: string, attributeId: string, updates: Partial<DynamicAttribute>): Promise<Template | null> => {
-    const existing = await getTemplateById(templateId);
-    if (!existing) return null;
+export const updateAttribute = async (templateId: string, userId: string, attributeId: string, updates: Partial<DynamicAttribute>): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId, userId);
+    if (!existing || existing.userId !== userId) return null;
 
     const currentAttributes = existing.attributes;
     const attrIndex = currentAttributes.findIndex(a => a.id === attributeId);
@@ -154,9 +194,9 @@ export const updateAttribute = async (templateId: string, attributeId: string, u
     return getTemplateById(templateId);
 };
 
-export const deleteAttribute = async (templateId: string, attributeId: string): Promise<Template | null> => {
-    const existing = await getTemplateById(templateId);
-    if (!existing) return null;
+export const deleteAttribute = async (templateId: string, userId: string, attributeId: string): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId, userId);
+    if (!existing || existing.userId !== userId) return null;
 
     const updatedAttributes = existing.attributes.filter(a => a.id !== attributeId);
 
@@ -167,9 +207,9 @@ export const deleteAttribute = async (templateId: string, attributeId: string): 
     return getTemplateById(templateId);
 };
 
-export const updateAllAttributes = async (templateId: string, attributes: DynamicAttribute[]): Promise<Template | null> => {
-    const existing = await getTemplateById(templateId);
-    if (!existing) return null;
+export const updateAllAttributes = async (templateId: string, userId: string, attributes: DynamicAttribute[]): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId, userId);
+    if (!existing || existing.userId !== userId) return null;
 
     await db.update(templates)
         .set({ attributes: attributes, updatedAt: new Date() })

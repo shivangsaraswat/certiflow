@@ -21,7 +21,11 @@ const upload = multer(uploadConfig);
 // Get all templates
 router.get('/', async (req, res) => {
     try {
-        const templates = await getAllTemplates();
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+        const templates = await getAllTemplates(userId);
         const response: ApiResponse = {
             success: true,
             data: templates
@@ -35,6 +39,11 @@ router.get('/', async (req, res) => {
 // Create new template
 router.post('/', upload.single('template'), async (req, res) => {
     try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
         if (!req.file) {
             return res.status(400).json({ success: false, error: 'No PDF file uploaded' });
         }
@@ -44,7 +53,7 @@ router.post('/', upload.single('template'), async (req, res) => {
         }
 
         // createTemplate now handles everything cleanly
-        const template = await createTemplate(req.file, {
+        const template = await createTemplate(req.file, userId, {
             name: req.body.name,
             description: req.body.description,
             code: req.body.code
@@ -64,11 +73,15 @@ router.post('/', upload.single('template'), async (req, res) => {
 // Update template details
 router.patch('/:id', async (req, res) => {
     try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
         const { name, description } = req.body;
-        const template = await updateTemplate(req.params.id, { name, description });
+        const template = await updateTemplate(req.params.id, userId, { name, description });
 
         if (!template) {
-            return res.status(404).json({ success: false, error: 'Template not found' });
+            return res.status(404).json({ success: false, error: 'Template not found or unauthorized' });
         }
 
         res.json({ success: true, data: template });
@@ -80,7 +93,9 @@ router.patch('/:id', async (req, res) => {
 // Get template by ID
 router.get('/:id', async (req, res) => {
     try {
-        const template = await getTemplateById(req.params.id);
+        const userId = req.user?.id;
+        // Allows public templates even if not logged in (userId optional)
+        const template = await getTemplateById(req.params.id, userId);
         if (!template) {
             return res.status(404).json({ success: false, error: 'Template not found' });
         }
@@ -97,9 +112,13 @@ router.get('/:id', async (req, res) => {
 // Delete template
 router.delete('/:id', async (req, res) => {
     try {
-        const success = await deleteTemplate(req.params.id);
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+        const success = await deleteTemplate(req.params.id, userId);
         if (!success) {
-            return res.status(404).json({ success: false, error: 'Template not found' });
+            return res.status(404).json({ success: false, error: 'Template not found or unauthorized' });
         }
         res.json({ success: true, message: 'Template deleted' });
     } catch (error) {
@@ -114,14 +133,19 @@ router.delete('/:id', async (req, res) => {
 // Update ALL attributes (Bulk Save from Editor)
 router.put('/:id/attributes', async (req, res) => {
     try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
         const { attributes } = req.body;
         if (!Array.isArray(attributes)) {
             return res.status(400).json({ success: false, error: 'Attributes must be an array' });
         }
 
-        const template = await updateAllAttributes(req.params.id, attributes);
+        const template = await updateAllAttributes(req.params.id, userId, attributes);
         if (!template) {
-            return res.status(404).json({ success: false, error: 'Template not found' });
+            return res.status(404).json({ success: false, error: 'Template not found or unauthorized' });
         }
         res.json({ success: true, data: template });
     } catch (error) {
@@ -132,7 +156,10 @@ router.put('/:id/attributes', async (req, res) => {
 // Add attribute
 router.post('/:id/attributes', async (req, res) => {
     try {
-        const template = await addAttribute(req.params.id, req.body);
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const template = await addAttribute(req.params.id, userId, req.body);
         if (!template) {
             return res.status(404).json({ success: false, error: 'Template not found' });
         }
@@ -145,7 +172,10 @@ router.post('/:id/attributes', async (req, res) => {
 // Update attribute
 router.put('/:id/attributes/:attrId', async (req, res) => {
     try {
-        const template = await updateAttribute(req.params.id, req.params.attrId, req.body);
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const template = await updateAttribute(req.params.id, userId, req.params.attrId, req.body);
         if (!template) {
             return res.status(404).json({ success: false, error: 'Template or attribute not found' });
         }
@@ -158,7 +188,10 @@ router.put('/:id/attributes/:attrId', async (req, res) => {
 // Remove attribute
 router.delete('/:id/attributes/:attrId', async (req, res) => {
     try {
-        const template = await deleteAttribute(req.params.id, req.params.attrId);
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        const template = await deleteAttribute(req.params.id, userId, req.params.attrId);
         if (!template) {
             return res.status(404).json({ success: false, error: 'Template not found' });
         }

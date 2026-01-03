@@ -1,47 +1,91 @@
 
-// =============================================================================
-// Shared Type Definitions
-// =============================================================================
+export interface DynamicAttribute {
+    id: string; // Unique ID for the attribute
+    name: string; // Display name (e.g., "Student Name")
+    key: string; // unique key for data mapping (e.g., "recipient_name")
+    type: 'text' | 'image' | 'qrcode' | 'date';
+    defaultValue?: string;
+    description?: string;
 
-// Template & Attribute Types
+    // Positioning and Style
+    x: number; // Percentage (0-100)
+    y: number; // Percentage (0-100)
+    width?: number; // For images/QR codes
+    height?: number; // For images/QR codes
+
+    fontFamily?: string;
+    fontSize?: number;
+    fontWeight?: string;
+    color?: string;
+    textAlign?: 'left' | 'center' | 'right';
+    opacity?: number;
+
+    // Renderer properties
+    align?: 'left' | 'center' | 'right';
+    page?: number;
+    maxWidth?: number;
+    required?: boolean;
+    placeholder?: string;
+}
+
 export interface Template {
     id: string;
-    code: string; // 1-5 char unique template code (e.g., "NAMD25")
+    code: string; // Unique code
     name: string;
-    description: string | null;
+    description?: string;
+
+    // File Info
     filename: string;
-    filepath: string;
+    filepath: string; // Path in storage
+    fileUrl?: string; // Public/Private URL
+    fileId?: string; // ImageKit/Cloud File ID
+
+    // Dimensions
     pageCount: number;
     width: number;
     height: number;
-    format: 'pdf'; // Fixed to PDF for now
+    format: 'pdf' | 'png' | 'jpg';
+
+    // Dynamic Content
     attributes: DynamicAttribute[];
+
+    // Multi-tenancy
+    userId?: string | null;
+    isPublic?: boolean;
+
     createdAt: Date;
     updatedAt: Date;
 }
 
-export interface DynamicAttribute {
+export interface ApiResponse<T = any> {
+    success: boolean;
+    data?: T;
+    error?: string;
+    message?: string;
+}
+
+export type StorageType = 'templates' | 'generated' | 'signatures' | 'bulk-zips';
+
+export interface Signature {
+    id: string;
+    name: string;
+    filename: string;
+    filepath: string; // URL
+    fileId?: string;
+    uploadDate: Date;
+    userId?: string;
+}
+
+export interface Group {
     id: string;
     name: string;
     description?: string;
-    placeholder?: string; // e.g., "{studentName}" -> matches CSV header or prompt
-    type: 'text' | 'date' | 'signature' | 'image' | 'qrcode';
-    required?: boolean;
-    defaultValue?: string;
-
-    // Positioning and Style
-    page: number; // 1-indexed
-    x: number;
-    y: number;
-    width?: number; // For images/signatures
-    height?: number; // For images/signatures
-
-    fontSize?: number;
-    fontFamily?: string;
-    fontWeight?: string; // 'bold', 'normal'
-    color?: string; // Hex code
-    align?: 'left' | 'center' | 'right';
-    maxWidth?: number; // For text wrapping
+    templateId: string;
+    sheetId?: string;
+    certificateCount?: number;
+    userId?: string;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 export interface Certificate {
@@ -51,91 +95,72 @@ export interface Certificate {
     groupId?: string | null;
     recipientName: string;
     recipientEmail?: string | null;
-    data: any; // JSON payload
-    filename: string; // generated filename
-    filepath: string; // full path
+    data: Record<string, string>;
+    filename: string;
+    filepath: string;
     fileUrl?: string;
     fileId?: string;
     generationMode: 'single' | 'bulk';
     bulkJobId?: string | null;
+    userId?: string | null;
     createdAt: Date;
-}
-
-export interface BulkError {
-    row: number;
-    error: string;
-    data?: any;
 }
 
 export interface BulkJob {
     id: string;
     templateId: string;
+    groupId?: string | null;
     sourceType: 'csv' | 'sheets';
     totalRecords: number;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
     successful: number;
     failed: number;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
     zipFilename?: string | null;
     zipFilepath?: string | null;
     zipFileUrl?: string | null;
     zipFileId?: string | null;
-    errors?: BulkError[] | null;
+    errors?: any;
+    userId?: string | null;
     createdAt: Date;
     updatedAt: Date;
 }
 
-// Response Types
-export interface ApiResponse<T = any> {
-    success: boolean;
-    data?: T;
-    error?: string;
-}
+export interface CertificateData extends Record<string, string> { }
 
 export interface GenerationResult {
     certificateId: string;
     filename: string;
     downloadUrl: string;
+    fileUrl?: string;
 }
 
 export interface BulkGenerationResult {
     jobId: string;
-    message: string;
+    message?: string;
+    totalRequested?: number;
+    successful?: number;
+    failed?: number;
+    status?: string;
+    errors?: Array<{ row: number; message: string }>;
+    zipUrl?: string;
 }
-
-// Storage Types
-export type StorageType = 'templates' | 'generated' | 'signatures' | 'bulk-zips';
 
 export interface StorageProvider {
-    initialize(): Promise<void>;
-    saveFile(file: Express.Multer.File, type: StorageType, filename?: string): Promise<{ id: string, name: string, url: string }>;
-    getFile(type: StorageType, filename: string): Promise<Buffer>; // filename or fileId? ImageKit needs ID usually or we search by name
-    deleteFile(type: StorageType, filename: string): Promise<boolean>; // filename could be fileId
-    listFiles(type: StorageType): Promise<string[]>; // Returns names or objects?
-    getPublicUrl(type: StorageType, filename: string): string;
+    saveFile(file: any, type: StorageType, filename?: string): Promise<{ id: string, name: string, url: string }>;
     uploadBuffer(buffer: Buffer, filepath: string): Promise<{ id: string, name: string, url: string }>;
-    get(type: StorageType, filename: string): Promise<Buffer>;
-}
-
-export interface Signature {
-    id: string;
-    name: string; // e.g., "Principal Signature"
-    filename: string;
-    uploadDate: Date;
-    filepath: string;
-}
-
-// Renderer Types
-export interface CertificateData {
-    [key: string]: string;
+    deleteFile(type: StorageType, filename: string): Promise<boolean>;
+    getFile(type: StorageType, filename: string): Promise<Buffer>;
+    listFiles(type: StorageType): Promise<string[]>;
+    getPublicUrl(type: StorageType, filename: string): string;
 }
 
 export const FONT_MAPPING = {
-    'Inter': 'Inter-Regular.ttf',
-    'Roboto': 'Roboto-Regular.ttf',
-    'Great Vibes': 'GreatVibes-Regular.ttf',
-    'Dancing Script': 'DancingScript-Regular.ttf',
-    'Playfair Display': 'PlayfairDisplay-Regular.ttf',
-    'Montserrat': 'Montserrat-Regular.ttf',
+    'Inter': 'Inter',
+    'Roboto': 'Roboto',
+    'Great Vibes': 'Great Vibes',
+    'Dancing Script': 'Dancing Script',
+    'Playfair Display': 'Playfair Display',
+    'Montserrat': 'Montserrat'
 } as const;
 
 export type SupportedFont = keyof typeof FONT_MAPPING;
@@ -145,5 +170,5 @@ export function isTextAttribute(attr: DynamicAttribute): boolean {
 }
 
 export function isSignatureAttribute(attr: DynamicAttribute): boolean {
-    return attr.type === 'signature' || attr.type === 'image' || attr.type === 'qrcode';
+    return attr.type === 'image';
 }
