@@ -41,20 +41,27 @@ interface Spreadsheet {
     updatedAt: string;
 }
 
+import { useSession } from 'next-auth/react';
+
 export default function DataVaultPage() {
     const router = useRouter();
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [sheets, setSheets] = useState<Spreadsheet[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
 
     useEffect(() => {
-        fetchSheets();
-    }, []);
+        if (userId) fetchSheets();
+    }, [userId]);
 
     const fetchSheets = async () => {
+        if (!userId) return;
         try {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const res = await fetch(`${baseUrl}/api/spreadsheets`);
+            const res = await fetch(`${baseUrl}/api/spreadsheets`, {
+                headers: { 'x-user-id': userId }
+            });
             const data = await res.json();
             if (data.success) {
                 setSheets(data.data);
@@ -73,11 +80,14 @@ export default function DataVaultPage() {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/spreadsheets`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': userId || ''
+                },
                 body: JSON.stringify({
                     name: `Untitled Spreadsheet ${sheets.length + 1}`,
                     // Provide empty default content
-                    content: [{ name: 'Sheet1', celldata: [] }]
+                    content: [{ name: 'Sheet1', celldata: [] }, { name: 'config', celldata: [] }]
                 }),
             });
             const data = await res.json();
@@ -105,6 +115,7 @@ export default function DataVaultPage() {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/spreadsheets/${id}`, {
                 method: 'DELETE',
+                headers: { 'x-user-id': userId || '' }
             });
 
             if (res.ok) {

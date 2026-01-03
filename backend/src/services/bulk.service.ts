@@ -61,10 +61,11 @@ export async function processBulkGeneration(
     templateId: string,
     source: { type: 'csv', path: string } | { type: 'sheet', id: string },
     columnMapping: Record<string, string>,
-    groupId?: string
+    groupId?: string,
+    userId?: string
 ): Promise<string> {
     const jobId = uuidv4();
-    const template = await getTemplateById(templateId);
+    const template = await getTemplateById(templateId, userId);
 
     if (!template) {
         throw new Error('Template not found');
@@ -190,12 +191,13 @@ export async function processBulkGeneration(
         createdAt: new Date(),
         updatedAt: new Date(),
         errors: [] as BulkError[],
+        userId: userId || null
     };
 
     await db.insert(bulkJobs).values(newJob as any);
 
     // 3. Start async processing
-    processBatch(jobId, template, records, columnMapping, groupId).catch(err => {
+    processBatch(jobId, template, records, columnMapping, groupId, userId).catch(err => {
         console.error(`Bulk job ${jobId} crashed:`, err);
         updateJobStatus(jobId, 'failed');
     });
@@ -208,7 +210,8 @@ async function processBatch(
     template: Template,
     records: CSVRecord[],
     columnMapping: Record<string, string>,
-    groupId?: string
+    groupId?: string,
+    userId?: string
 ) {
     // Only use temp dir for ZIP creation
     const tempDir = path.join(os.tmpdir(), 'certif-bulk');
@@ -241,30 +244,31 @@ async function processBatch(
 
             console.log(`[Bulk] Row ${index + 1} certData:`, JSON.stringify(certData));
 
-            // Try to find email in the record (look for common email field names)
-            let recipientEmail: string | undefined;
-            const emailKeys = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'email_address', 'email address'];
-            for (const key of emailKeys) {
-                if (record[key]) {
-                    recipientEmail = record[key];
-                    break;
-                }
-            }
-            // Also check if any column was mapped to email
-            for (const [sourceCol, attrId] of Object.entries(columnMapping)) {
-                const attr = template.attributes.find(a => a.id === attrId);
-                if (attr && attr.name.toLowerCase().includes('email')) {
-                    recipientEmail = record[sourceCol] || recipientEmail;
-                    break;
-                }
+            // Column A (index 0) MUST be email - enforce data rule
+            // Get the first column from the record (keys are header names, first header is Column A)
+            const recordKeys = Object.keys(record);
+            const firstColValue = recordKeys.length > 0 ? record[recordKeys[0]] : undefined;
+            let recipientEmail: string | undefined = firstColValue;
+
+            // Validate email format
+            if (!recipientEmail || !recipientEmail.includes('@')) {
+                errors.push({
+                    row: index + 2, // +2 because 1-indexed and row 0 is header
+                    error: 'Column A must contain a valid email address'
+                });
+                failed++;
+                continue;
             }
 
             // Generate Certificate ID using template code and email
             const certId = generateCertificateCode(template.code, recipientEmail);
             const filename = `${certId}.pdf`;
 
-            // Render to Buffer (No local file save)
-            const pdfBuffer = await renderCertificate(template, certData);
+            // Inject certificateId into certData for rendering
+            certData['certificateId'] = certId;
+
+            // Render to Buffer (No local file save) - pass email for ID generation
+            const pdfBuffer = await renderCertificate(template, certData, recipientEmail);
 
             // Upload PDF to ImageKit
             const uploadPath = `generated/${filename}`;
@@ -288,7 +292,8 @@ async function processBatch(
                 fileUrl: uploadResult.url,
                 fileId: uploadResult.id,
                 generationMode: 'bulk',
-                bulkJobId: jobId
+                bulkJobId: jobId,
+                userId: userId || null
             });
 
             successful++;
@@ -391,13 +396,22 @@ async function createZip(sourceDir: string, files: string[], zipPath: string): P
     });
 }
 
-export async function getBulkJobs(limit = 10, offset = 0) {
-    const jobs = await db.select().from(bulkJobs)
-        .orderBy(desc(bulkJobs.createdAt))
-        .limit(limit)
-        .offset(offset);
+export async function getBulkJobs(limit = 10, offset = 0, userId?: string) {
+    let query = db.select().from(bulkJobs).orderBy(desc(bulkJobs.createdAt)).limit(limit).offset(offset);
 
-    const all = await db.select({ id: bulkJobs.id }).from(bulkJobs);
+    if (userId) {
+        // @ts-ignore - complex query builder typing
+        query = db.select().from(bulkJobs).where(eq(bulkJobs.userId, userId)).orderBy(desc(bulkJobs.createdAt)).limit(limit).offset(offset);
+    }
+
+    const jobs = await query;
+
+    let countQuery = db.select({ id: bulkJobs.id }).from(bulkJobs);
+    if (userId) {
+        // @ts-ignore
+        countQuery = db.select({ id: bulkJobs.id }).from(bulkJobs).where(eq(bulkJobs.userId, userId));
+    }
+    const all = await countQuery;
 
     return {
         jobs: jobs.map(j => ({

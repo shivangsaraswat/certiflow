@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Trash2, Type, Calendar, Signature, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import type { DynamicAttribute } from '@/types';
-import { AVAILABLE_FONTS, FONT_SIZES, ATTRIBUTE_TYPES } from '@/types';
+import { AVAILABLE_FONTS, FONT_SIZES, ATTRIBUTE_TYPES, SYSTEM_ATTRIBUTE_IDS } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface PropertyPanelProps {
@@ -343,16 +343,24 @@ export function PropertyPanel({
                         </div>
                     )}
 
-                    <div className="pt-2">
-                        <Button
-                            variant="destructive"
-                            className="w-full h-8 text-sm"
-                            onClick={onDelete}
-                        >
-                            <Trash2 className="mr-2 h-3.5 w-3.5" />
-                            Delete
-                        </Button>
-                    </div>
+                    {/* Delete Button - disabled for system attributes */}
+                    {!SYSTEM_ATTRIBUTE_IDS.includes(attribute.id) && (
+                        <div className="pt-2">
+                            <Button
+                                variant="destructive"
+                                className="w-full h-8 text-sm"
+                                onClick={onDelete}
+                            >
+                                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                Delete
+                            </Button>
+                        </div>
+                    )}
+                    {SYSTEM_ATTRIBUTE_IDS.includes(attribute.id) && (
+                        <div className="pt-2 text-xs text-muted-foreground text-center">
+                            System attribute (cannot be deleted)
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

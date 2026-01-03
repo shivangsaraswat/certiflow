@@ -21,6 +21,9 @@ const router = Router();
  */
 router.get('/', async (req, res) => {
     try {
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         const allGroups = await db
             .select({
                 id: groups.id,
@@ -31,6 +34,7 @@ router.get('/', async (req, res) => {
                 updatedAt: groups.updatedAt,
             })
             .from(groups)
+            .where(eq(groups.userId, userId))
             .orderBy(desc(groups.createdAt));
 
         // Get template info and certificate counts for each group
@@ -70,6 +74,9 @@ router.get('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
     try {
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         const { name, description, templateId, sheetId } = req.body;
 
         if (!name || !templateId) {
@@ -101,6 +108,7 @@ router.post('/', async (req, res) => {
             description: description || null,
             templateId,
             sheetId: sheetId || null,
+            userId: userId,
             createdAt: now,
             updatedAt: now,
         });
@@ -136,10 +144,15 @@ router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         const group = await db
             .select()
             .from(groups)
-            .where(eq(groups.id, id));
+            .where(
+                sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`
+            );
 
         if (!group[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
@@ -186,10 +199,15 @@ router.put('/:id', async (req, res) => {
         const { id } = req.params;
         const { name, description } = req.body;
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         const existing = await db
             .select()
             .from(groups)
-            .where(eq(groups.id, id));
+            .where(
+                sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`
+            );
 
         if (!existing[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
@@ -218,10 +236,15 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         const existing = await db
             .select()
             .from(groups)
-            .where(eq(groups.id, id));
+            .where(
+                sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`
+            );
 
         if (!existing[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
@@ -307,8 +330,12 @@ router.post('/:id/generate/single', async (req, res) => {
         const { id: groupId } = req.params;
         const { data, recipientName, recipientEmail } = req.body;
 
-        // Get group and template
-        const group = await db.select().from(groups).where(eq(groups.id, groupId));
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Get group and template (verify ownership of group)
+        const group = await db.select().from(groups)
+            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
         if (!group[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
@@ -368,8 +395,12 @@ router.post('/:id/generate/bulk', upload.single('csv'), async (req, res) => {
         const { id: groupId } = req.params;
         const { columnMapping: mappingStr, sheetId } = req.body;
 
-        // Get group
-        const group = await db.select().from(groups).where(eq(groups.id, groupId));
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Get group (verify ownership)
+        const group = await db.select().from(groups)
+            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
         if (!group[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }

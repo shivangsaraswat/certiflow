@@ -12,7 +12,7 @@ import {
     getCSVHeaders,
     getBulkJobById
 } from '../services/bulk.service.js';
-import { renderCertificate, generateCertificateId } from '../engine/renderer.js';
+import { renderCertificate, generateCertificateId, generateCertificateCode } from '../engine/renderer.js';
 import { uploadConfig } from '../middleware/upload.js';
 import { config } from '../config/index.js';
 import path from 'path';
@@ -30,24 +30,30 @@ const upload = multer(uploadConfig);
 // Generate single certificate
 router.post('/single', async (req, res) => {
     try {
-        const { templateId, data, recipientName } = req.body;
+        const { templateId, data, recipientName, recipientEmail } = req.body;
 
         const template = await getTemplateById(templateId);
         if (!template) {
             return res.status(404).json({ success: false, error: 'Template not found' });
         }
 
-        // Generate Code & Filename
-        const certificateCode = generateCertificateId();
+        // Generate Code & Filename using email for hash
+        const certificateCode = generateCertificateCode(template.code, recipientEmail);
         const filename = `${certificateCode}.pdf`;
 
-        // Render PDF (Buffer)
-        const pdfBuffer = await renderCertificate(template, data as CertificateData);
+        // Inject certificateId into data for rendering
+        const renderData = { ...data, certificateId: certificateCode };
+
+        // Render PDF (Buffer) - pass email for ID generation
+        const pdfBuffer = await renderCertificate(template, renderData as CertificateData, recipientEmail);
 
         // Upload to ImageKit
         // We pass a path like string to trigger folder logic in uploadBuffer, e.g. "generated/Code.pdf"
         const uploadPath = `generated/${filename}`;
         const uploadResult = await storage.uploadBuffer(pdfBuffer, uploadPath);
+
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         // Save Record
         await createCertificateRecord({
@@ -60,7 +66,8 @@ router.post('/single', async (req, res) => {
             fileUrl: uploadResult.url,
             fileId: uploadResult.id,
             generationMode: 'single',
-            bulkJobId: null
+            bulkJobId: null,
+            userId: userId
         });
 
         const response: ApiResponse<GenerationResult> = {
@@ -128,8 +135,11 @@ router.post('/bulk', upload.single('csv'), async (req, res) => {
             return res.status(400).json({ success: false, error: 'Either CSV file or sheetId is required' });
         }
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         // Start bulk generation (with optional groupId)
-        const result = await processBulkGeneration(templateId, source, columnMapping, groupId || undefined);
+        const result = await processBulkGeneration(templateId, source, columnMapping, groupId || undefined, userId);
 
         // For immediate response, we return basic info
         // The actual processing happens async, and we can poll the job
@@ -187,7 +197,14 @@ router.get('/bulk/status/:id', async (req, res) => {
         const { id } = req.params;
         const job = await getBulkJobById(id);
 
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
         if (!job) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+
+        if (job.userId !== userId) {
             return res.status(404).json({ success: false, error: 'Job not found' });
         }
 

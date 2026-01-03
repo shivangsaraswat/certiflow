@@ -12,18 +12,23 @@ import { Button } from '@/components/ui/button';
 import { TemplateCard } from '@/components/templates/template-card';
 import { LoadingPage } from '@/components/shared/loading-spinner';
 import { getTemplates, deleteTemplate } from '@/lib/api';
+import { useSession } from 'next-auth/react';
 import type { Template } from '@/types';
 
 export default function TemplatesPage() {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
 
     const loadTemplates = useCallback(async () => {
+        if (!userId) return; // Wait for session
+
         setIsLoading(true);
         setError(null);
         try {
-            const res = await getTemplates();
+            const res = await getTemplates(userId);
             if (res.success && res.data) {
                 setTemplates(res.data);
             } else {
@@ -34,7 +39,7 @@ export default function TemplatesPage() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [userId]);
 
     useEffect(() => {
         loadTemplates();
@@ -44,7 +49,7 @@ export default function TemplatesPage() {
         if (!confirm('Are you sure you want to delete this template?')) return;
 
         try {
-            const res = await deleteTemplate(id);
+            const res = await deleteTemplate(id, userId);
             if (res.success) {
                 setTemplates((prev) => prev.filter((t) => t.id !== id));
             } else {

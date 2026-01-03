@@ -19,10 +19,14 @@ import { storage } from '../services/storage.service.js';
 
 /**
  * Render a single certificate by overlaying data on a PDF template
+ * @param template - The certificate template
+ * @param data - Key-value pairs of attribute values
+ * @param recipientEmail - Optional email for certificate ID generation
  */
 export async function renderCertificate(
     template: Template,
-    data: CertificateData
+    data: CertificateData,
+    recipientEmail?: string
 ): Promise<Buffer> {
     // 1. Load the PDF template
     const templateBuffer = await storage.get('templates', template.filename);
@@ -34,7 +38,13 @@ export async function renderCertificate(
     // 3. Get pages
     const pages = pdfDoc.getPages();
 
-    // 4. Process each attribute from the template
+    // 4. Auto-inject Certificate ID if template has the attribute
+    const hasCertIdAttr = template.attributes.some(a => a.id === 'certificateId');
+    if (hasCertIdAttr && !data['certificateId']) {
+        data['certificateId'] = generateCertificateCode(template.code, recipientEmail);
+    }
+
+    // 5. Process each attribute from the template
     for (const attr of template.attributes) {
         const value = data[attr.id];
 
@@ -53,8 +63,7 @@ export async function renderCertificate(
         }
     }
 
-    // 5. Save and return the modified PDF
-    // 5. Save and return the modified PDF
+    // 6. Save and return the modified PDF
     const pdfBytes = await pdfDoc.save();
 
     // Side-effect removed: Caller is responsible for saving/uploading.
@@ -64,34 +73,48 @@ export async function renderCertificate(
 
 /**
  * Embed standard fonts into the PDF document
+ * Creates a map of all possible PDF fonts for lookup
  */
-async function embedFonts(pdfDoc: PDFDocument): Promise<Record<SupportedFont, PDFFont>> {
-    const fonts: Record<SupportedFont, PDFFont> = {
-        'Inter': await pdfDoc.embedFont(StandardFonts.Helvetica),
-        'Roboto': await pdfDoc.embedFont(StandardFonts.Helvetica),
-        'Great Vibes': await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
-        'Dancing Script': await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
-        'Playfair Display': await pdfDoc.embedFont(StandardFonts.TimesRoman),
-        'Montserrat': await pdfDoc.embedFont(StandardFonts.HelveticaBold),
-        // Fallbacks standard fonts if needed, but the type expects keys from FONT_MAPPING
+async function embedFonts(pdfDoc: PDFDocument): Promise<Record<string, PDFFont>> {
+    const fonts: Record<string, PDFFont> = {
+        // Sans-serif
+        'Helvetica': await pdfDoc.embedFont(StandardFonts.Helvetica),
+        'HelveticaBold': await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+        // Serif
+        'TimesRoman': await pdfDoc.embedFont(StandardFonts.TimesRoman),
+        'TimesRomanBold': await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+        'TimesRomanItalic': await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+        // Monospace
+        'Courier': await pdfDoc.embedFont(StandardFonts.Courier),
+        'CourierBold': await pdfDoc.embedFont(StandardFonts.CourierBold),
     };
     return fonts;
 }
 
 /**
- * Get the appropriate font based on attribute settings
+ * Get the appropriate PDF font based on attribute settings
+ * Uses the font family from template configuration and applies weight
  */
 function getFont(
-    fonts: Record<SupportedFont, PDFFont>,
-    fontFamily: string | undefined, // Allow undefined
+    fonts: Record<string, PDFFont>,
+    fontFamily: string | undefined,
     fontWeight?: string
 ): PDFFont {
-    // Map user font to standard font
-    // @ts-ignore
-    const baseFontKey = (fontFamily && FONT_MAPPING[fontFamily]) ? fontFamily : 'Inter';
-    const baseFont = fonts[baseFontKey as SupportedFont];
+    // Map user font to PDF standard font using FONT_MAPPING
+    const userFont = fontFamily || 'Helvetica';
+    const mapping = FONT_MAPPING[userFont as keyof typeof FONT_MAPPING];
+    const baseFont = mapping || 'Helvetica';
 
-    return baseFont || fonts['Inter'];
+    // Apply bold variant if weight is bold
+    let fontKey: string = baseFont;
+    if (fontWeight === 'bold') {
+        if (baseFont === 'Helvetica') fontKey = 'HelveticaBold';
+        else if (baseFont === 'TimesRoman') fontKey = 'TimesRomanBold';
+        else if (baseFont === 'Courier') fontKey = 'CourierBold';
+    }
+
+    // Return the matched font or fallback
+    return fonts[fontKey] || fonts['Helvetica'];
 }
 
 

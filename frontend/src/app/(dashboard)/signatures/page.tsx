@@ -25,7 +25,11 @@ import { LoadingSpinner, LoadingPage } from '@/components/shared/loading-spinner
 import { getSignatures, uploadSignature, deleteSignature, getViewUrl } from '@/lib/api';
 import type { Signature } from '@/types';
 
+import { useSession } from 'next-auth/react';
+
 export default function SignaturesPage() {
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [signatures, setSignatures] = useState<Signature[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
@@ -40,7 +44,11 @@ export default function SignaturesPage() {
         setIsLoading(true);
         setError(null);
         try {
-            const res = await getSignatures();
+            if (!userId) {
+                setSignatures([]);
+                return;
+            }
+            const res = await getSignatures(userId);
             if (res.success && res.data) {
                 setSignatures(res.data);
             } else {
@@ -54,8 +62,8 @@ export default function SignaturesPage() {
     }, []);
 
     useEffect(() => {
-        loadSignatures();
-    }, [loadSignatures]);
+        if (userId) loadSignatures();
+    }, [loadSignatures, userId]);
 
     const handleUpload = async () => {
         if (!signatureName.trim() || !signatureFile) return;
@@ -68,7 +76,7 @@ export default function SignaturesPage() {
             formData.append('name', signatureName.trim());
             formData.append('signature', signatureFile);
 
-            const res = await uploadSignature(formData);
+            const res = await uploadSignature(formData, userId);
             if (res.success && res.data) {
                 setSignatures((prev) => [{ ...res.data!, previewUrl: getViewUrl('signatures', res.data!.filename) }, ...prev]);
                 setIsDialogOpen(false);
@@ -88,7 +96,7 @@ export default function SignaturesPage() {
         if (!confirm('Are you sure you want to delete this signature?')) return;
 
         try {
-            const res = await deleteSignature(id);
+            const res = await deleteSignature(id, userId);
             if (res.success) {
                 setSignatures((prev) => prev.filter((s) => s.id !== id));
             } else {

@@ -54,9 +54,12 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useSession } from 'next-auth/react';
 
 export default function GroupDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [group, setGroup] = useState<Group | null>(null);
     const [template, setTemplate] = useState<Template | null>(null);
     const [certificates, setCertificates] = useState<GroupCertificate[]>([]);
@@ -95,12 +98,13 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
     }, [group, setPageTitle]);
 
     const loadGroup = useCallback(async () => {
+        if (!userId) return;
         setLoading(true);
-        const result = await getGroup(id);
+        const result = await getGroup(id, userId);
         if (result.success && result.data) {
             setGroup(result.data);
             // Load template details
-            const tplRes = await getTemplate(result.data.templateId);
+            const tplRes = await getTemplate(result.data.templateId, userId);
             if (tplRes.success && tplRes.data) {
                 setTemplate(tplRes.data);
                 // Initialize form data
@@ -112,22 +116,25 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
             }
         }
         setLoading(false);
-    }, [id]);
+    }, [id, userId]);
 
     const loadCertificates = useCallback(async () => {
+        if (!userId) return;
         setLoadingCerts(true);
-        const result = await getGroupCertificates(id);
+        const result = await getGroupCertificates(id, userId);
         if (result.success && result.data) {
             setCertificates(result.data.certificates);
             setTotal(result.data.total);
         }
         setLoadingCerts(false);
-    }, [id]);
+    }, [id, userId]);
 
     useEffect(() => {
-        loadGroup();
-        loadCertificates();
-    }, [loadGroup, loadCertificates]);
+        if (userId) {
+            loadGroup();
+            loadCertificates();
+        }
+    }, [loadGroup, loadCertificates, userId]);
 
     const handleRefresh = () => {
         loadGroup();
@@ -142,7 +149,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
             data: formData,
             recipientName: formData[template.attributes[0]?.id] || 'Unknown',
             recipientEmail: recipientEmail || undefined,
-        });
+        }, userId);
 
         if (res.success && res.data) {
             toast.success(`Certificate ${res.data.certificateId} generated!`);
@@ -164,7 +171,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         e.stopPropagation();
         if (!confirm('Are you sure you want to delete this certificate? This cannot be undone.')) return;
 
-        const res = await deleteCertificate(id);
+        const res = await deleteCertificate(id, userId);
         if (res.success) {
             toast.success('Certificate deleted successfully');
             loadCertificates(); // Refresh list
@@ -180,7 +187,9 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         setLoadingHeaders(true);
         try {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const sheetRes = await fetch(`${baseUrl}/api/spreadsheets/${group.sheetId}`);
+            const sheetRes = await fetch(`${baseUrl}/api/spreadsheets/${group.sheetId}`, {
+                headers: { 'x-user-id': userId || '' }
+            });
             const sheetData = await sheetRes.json();
 
             if (sheetData.success && sheetData.data?.content) {
@@ -291,6 +300,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
 
             const result = await fetch(`${baseUrl}/api/generate/bulk`, {
                 method: 'POST',
+                headers: { 'x-user-id': userId || '' },
                 body: formData,
             });
 
@@ -315,7 +325,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
 
         if (bulkStatus === 'processing' && bulkJobId) {
             interval = setInterval(async () => {
-                const res = await getBulkJobStatus(bulkJobId);
+                const res = await getBulkJobStatus(bulkJobId, userId);
                 if (res.success && res.data) {
                     setBulkResult(res.data);
 

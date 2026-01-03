@@ -21,9 +21,12 @@ import {
 } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { getTemplates, getSignatures, generateSingleCertificate, getDownloadUrl } from '@/lib/api';
+import { useSession } from 'next-auth/react';
 import type { Template, Signature, CertificateData, DynamicAttribute, GenerationResult } from '@/types';
 
 export function SingleCertificateForm() {
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     // Data state
     const [templates, setTemplates] = useState<Template[]>([]);
     const [signatures, setSignatures] = useState<Signature[]>([]);
@@ -41,10 +44,11 @@ export function SingleCertificateForm() {
     // Load templates and signatures
     useEffect(() => {
         async function loadData() {
+            if (!userId) return;
             try {
                 const [templatesRes, signaturesRes] = await Promise.all([
-                    getTemplates(),
-                    getSignatures(),
+                    getTemplates(userId),
+                    getSignatures(userId),
                 ]);
 
                 if (templatesRes.success && templatesRes.data) {
@@ -60,8 +64,10 @@ export function SingleCertificateForm() {
             }
         }
 
-        loadData();
-    }, []);
+        if (userId) {
+            loadData();
+        }
+    }, [userId]);
 
     // Reset form when template changes
     useEffect(() => {
@@ -106,7 +112,7 @@ export function SingleCertificateForm() {
         setResult(null);
 
         try {
-            const res = await generateSingleCertificate(selectedTemplateId, formData);
+            const res = await generateSingleCertificate(selectedTemplateId, formData, userId);
             if (res.success && res.data) {
                 setResult(res.data);
             } else {

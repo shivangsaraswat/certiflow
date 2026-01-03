@@ -20,6 +20,7 @@ import { getGroups, getTemplates, createGroup, deleteGroup } from '@/lib/api';
 import type { Group, Template } from '@/types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 
 interface Spreadsheet {
     id: string;
@@ -29,6 +30,8 @@ interface Spreadsheet {
 
 export default function GroupsPage() {
     const router = useRouter();
+    const { data: session } = useSession();
+    const userId = session?.user?.id;
     const [groups, setGroups] = useState<Group[]>([]);
     const [templates, setTemplates] = useState<Template[]>([]);
     const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
@@ -49,10 +52,14 @@ export default function GroupsPage() {
         setLoading(true);
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+        if (!userId) return;
+
         const [groupsRes, templatesRes, sheetsRes] = await Promise.all([
-            getGroups(),
-            getTemplates(),
-            fetch(`${baseUrl}/api/spreadsheets`).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+            getGroups(userId),
+            getTemplates(userId),
+            fetch(`${baseUrl}/api/spreadsheets`, {
+                headers: { 'x-user-id': userId }
+            }).then(r => r.json()).catch(() => ({ success: false, data: [] })),
         ]);
 
         if (groupsRes.success && groupsRes.data) setGroups(groupsRes.data);
@@ -63,8 +70,8 @@ export default function GroupsPage() {
     }, []);
 
     useEffect(() => {
-        loadData();
-    }, [loadData]);
+        if (userId) loadData();
+    }, [loadData, userId]);
 
     // Check for return from template/sheet creation
     useEffect(() => {
@@ -124,7 +131,10 @@ export default function GroupsPage() {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         const res = await fetch(`${baseUrl}/api/spreadsheets`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'x-user-id': userId || ''
+            },
             body: JSON.stringify({ name: 'Untitled Spreadsheet' }),
         });
         const data = await res.json();
@@ -142,7 +152,7 @@ export default function GroupsPage() {
             description: groupDescription || undefined,
             templateId: selectedTemplateId,
             sheetId: selectedSheetId,
-        });
+        }, userId);
 
         if (result.success && result.data) {
             setGroups((prev) => [result.data!, ...prev]);
@@ -153,7 +163,7 @@ export default function GroupsPage() {
 
     const handleDeleteGroup = async (id: string) => {
         if (!confirm('Are you sure you want to delete this group?')) return;
-        const result = await deleteGroup(id);
+        const result = await deleteGroup(id, userId);
         if (result.success) {
             setGroups((prev) => prev.filter((g) => g.id !== id));
         }

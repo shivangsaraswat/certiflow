@@ -12,6 +12,7 @@ import { config } from './config/index.js';
 import { storage } from './services/storage.service.js';
 import { loadSignatures } from './routes/files.js';
 import routes from './routes/index.js';
+import { authMiddleware } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { db } from './lib/db.js';
 
@@ -33,6 +34,9 @@ async function main() {
 
     // Parse URL-encoded bodies
     app.use(express.urlencoded({ extended: true }));
+
+    // Auth Middleware (Extracts x-user-id)
+    app.use(authMiddleware); // Added authMiddleware
 
     // ==========================================================================
     // Initialize Services
