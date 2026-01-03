@@ -1,100 +1,91 @@
-/**
- * TypeScript type definitions for the Certificate Generation Application
- * Updated for dynamic, user-defined attributes per template
- */
 
 // =============================================================================
-// Template Types
+// Shared Type Definitions
 // =============================================================================
 
+// Template & Attribute Types
 export interface Template {
     id: string;
     name: string;
-    description?: string;
+    description: string | null;
     filename: string;
     filepath: string;
-    format: 'pdf';
     pageCount: number;
-    width: number;                    // Page width in points (72 points = 1 inch)
-    height: number;                   // Page height in points
-    attributes: DynamicAttribute[];   // Custom attributes defined by user
-    createdAt: string;
-    updatedAt: string;
+    width: number;
+    height: number;
+    format: 'pdf'; // Fixed to PDF for now
+    attributes: DynamicAttribute[];
+    createdAt: Date;
+    updatedAt: Date;
 }
 
-/**
- * Dynamic Attribute - User-defined placeholder on the template
- * Each template can have different attributes based on user configuration
- */
 export interface DynamicAttribute {
-    id: string;                       // Unique ID (e.g., "attr_1", "attr_2")
-    name: string;                     // Display name (e.g., "Recipient Name")
-    placeholder: string;              // Placeholder shown in editor (e.g., "{Name}")
-    type: 'text' | 'date' | 'signature';
-    required: boolean;
+    id: string;
+    name: string;
+    description?: string;
+    placeholder?: string; // e.g., "{studentName}" -> matches CSV header or prompt
+    type: 'text' | 'date' | 'signature' | 'image' | 'qrcode';
+    required?: boolean;
+    defaultValue?: string;
 
-    // Position in PDF coordinates (origin at bottom-left)
-    page: number;                     // 1-indexed page number
-    x: number;                        // X position in points
-    y: number;                        // Y position in points (from bottom)
+    // Positioning and Style
+    page: number; // 1-indexed
+    x: number;
+    y: number;
+    width?: number; // For images/signatures
+    height?: number; // For images/signatures
 
-    // Text styling (for text and date types)
-    fontSize: number;
-    fontFamily: string;
-    fontWeight: 'normal' | 'bold';
-    color: string;                    // Hex color (e.g., "#1F2A44")
-    align: 'left' | 'center' | 'right';
-    maxWidth?: number;                // For text wrapping
-
-    // Image dimensions (for signature type)
-    width?: number;
-    height?: number;
+    fontSize?: number;
+    fontFamily?: string;
+    fontWeight?: string; // 'bold', 'normal'
+    color?: string; // Hex code
+    align?: 'left' | 'center' | 'right';
+    maxWidth?: number; // For text wrapping
 }
 
-// Type guards
-export function isTextAttribute(attr: DynamicAttribute): boolean {
-    return attr.type === 'text' || attr.type === 'date';
-}
-
-export function isSignatureAttribute(attr: DynamicAttribute): boolean {
-    return attr.type === 'signature';
-}
-
-// =============================================================================
-// Certificate Data Types
-// =============================================================================
-
-/**
- * Certificate data - dynamic key-value pairs matching template attributes
- */
-export interface CertificateData {
-    [attributeId: string]: string | undefined;
-}
-
-export interface GenerateSingleRequest {
+export interface Certificate {
+    id: string;
+    certificateCode: string;
     templateId: string;
-    data: CertificateData;
+    recipientName: string;
+    data: any; // JSON payload
+    filename: string; // generated filename
+    filepath: string; // full path
+    fileUrl?: string;
+    fileId?: string;
+    generationMode: 'single' | 'bulk';
+    bulkJobId?: string | null;
+    createdAt: Date;
 }
 
-export interface GenerateBulkRequest {
+export interface BulkError {
+    row: number;
+    error: string;
+    data?: any;
+}
+
+export interface BulkJob {
+    id: string;
     templateId: string;
-    columnMapping: Record<string, string>; // CSV column -> attribute ID
+    sourceType: 'csv' | 'sheets';
+    totalRecords: number;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    successful: number;
+    failed: number;
+    zipFilename?: string | null;
+    zipFilepath?: string | null;
+    zipFileUrl?: string | null;
+    zipFileId?: string | null;
+    errors?: BulkError[] | null;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
-// =============================================================================
-// API Response Types
-// =============================================================================
-
-export interface ApiResponse<T> {
+// Response Types
+export interface ApiResponse<T = any> {
     success: boolean;
     data?: T;
-    error?: ApiError;
-}
-
-export interface ApiError {
-    code: string;
-    message: string;
-    details?: Record<string, string>;
+    error?: string;
 }
 
 export interface GenerationResult {
@@ -105,85 +96,51 @@ export interface GenerationResult {
 
 export interface BulkGenerationResult {
     jobId: string;
-    totalRequested: number;
-    successful: number;
-    failed: number;
-    zipUrl: string;
-    errors?: BulkError[];
-}
-
-export interface BulkError {
-    row: number;
     message: string;
 }
 
-// =============================================================================
 // Storage Types
-// =============================================================================
-
-export type StorageType = 'templates' | 'signatures' | 'generated' | 'bulk-zips';
+export type StorageType = 'templates' | 'generated' | 'signatures' | 'bulk-zips';
 
 export interface StorageProvider {
-    save(file: Buffer, type: StorageType, filename: string): Promise<string>;
+    initialize(): Promise<void>;
+    saveFile(file: Express.Multer.File, type: StorageType, filename?: string): Promise<{ id: string, name: string, url: string }>;
+    getFile(type: StorageType, filename: string): Promise<Buffer>; // filename or fileId? ImageKit needs ID usually or we search by name
+    deleteFile(type: StorageType, filename: string): Promise<boolean>; // filename could be fileId
+    listFiles(type: StorageType): Promise<string[]>; // Returns names or objects?
+    getPublicUrl(type: StorageType, filename: string): string;
+    uploadBuffer(buffer: Buffer, filepath: string): Promise<{ id: string, name: string, url: string }>;
     get(type: StorageType, filename: string): Promise<Buffer>;
-    delete(type: StorageType, filename: string): Promise<void>;
-    list(type: StorageType): Promise<string[]>;
-    getUrl(type: StorageType, filename: string): string;
-    getPath(type: StorageType, filename: string): string;
 }
-
-// =============================================================================
-// Signature Types
-// =============================================================================
 
 export interface Signature {
     id: string;
-    name: string;
+    name: string; // e.g., "Principal Signature"
     filename: string;
+    uploadDate: Date;
     filepath: string;
-    createdAt: string;
 }
 
-// =============================================================================
-// CSV Types
-// =============================================================================
-
-export interface CSVRecord {
+// Renderer Types
+export interface CertificateData {
     [key: string]: string;
 }
 
-export interface ColumnMapping {
-    [csvColumn: string]: string; // maps to attribute ID
+export const FONT_MAPPING = {
+    'Inter': 'Inter-Regular.ttf',
+    'Roboto': 'Roboto-Regular.ttf',
+    'Great Vibes': 'GreatVibes-Regular.ttf',
+    'Dancing Script': 'DancingScript-Regular.ttf',
+    'Playfair Display': 'PlayfairDisplay-Regular.ttf',
+    'Montserrat': 'Montserrat-Regular.ttf',
+} as const;
+
+export type SupportedFont = keyof typeof FONT_MAPPING;
+
+export function isTextAttribute(attr: DynamicAttribute): boolean {
+    return attr.type === 'text' || attr.type === 'date';
 }
 
-// =============================================================================
-// Font Types
-// =============================================================================
-
-export type SupportedFont =
-    | 'Helvetica'
-    | 'Helvetica-Bold'
-    | 'Times-Roman'
-    | 'Times-Bold'
-    | 'Courier'
-    | 'Courier-Bold';
-
-// Map user-friendly names to pdf-lib standard fonts
-export const FONT_MAPPING: Record<string, SupportedFont> = {
-    'Helvetica': 'Helvetica',
-    'Arial': 'Helvetica',
-    'Sans-Serif': 'Helvetica',
-    'Times New Roman': 'Times-Roman',
-    'Times': 'Times-Roman',
-    'Serif': 'Times-Roman',
-    'Courier': 'Courier',
-    'Courier New': 'Courier',
-    'Monospace': 'Courier',
-};
-
-// Available fonts for the editor
-export const AVAILABLE_FONTS = [
-    { value: 'Helvetica', label: 'Helvetica (Sans-Serif)' },
-    { value: 'Times New Roman', label: 'Times New Roman (Serif)' },
-    { value: 'Courier', label: 'Courier (Monospace)' },
-];
+export function isSignatureAttribute(attr: DynamicAttribute): boolean {
+    return attr.type === 'signature' || attr.type === 'image' || attr.type === 'qrcode';
+}

@@ -1,203 +1,117 @@
-/**
- * File Routes
- * API endpoints for file operations (download, signatures)
- */
 
-import { Router, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
-import fs from 'fs/promises';
-import { asyncHandler, AppError } from '../middleware/error-handler.js';
-import { uploadSignature } from '../middleware/upload.js';
+import { Router } from 'express';
+import multer from 'multer';
 import { storage } from '../services/storage.service.js';
 import { ApiResponse, Signature, StorageType } from '../types/index.js';
+import { uploadConfig } from '../middleware/upload.js';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/index.js';
+import path from 'path';
 
 const router = Router();
+const upload = multer(uploadConfig);
 
-// In-memory signature store (in production, use a database)
-const signatures: Map<string, Signature> = new Map();
-const SIGNATURES_JSON_PATH = path.join(config.storage.root, 'signatures.json');
+export const loadSignatures = async () => {
+    // No-op or fetch from storage if needed. 
+    // ImageKit doesn't need "loading" to cache.
+    // We can list files dynamically.
+};
 
-/**
- * Load signatures from JSON file on startup
- */
-export async function loadSignatures(): Promise<void> {
+// List signatures
+router.get('/signatures', async (req, res) => {
     try {
-        const data = await fs.readFile(SIGNATURES_JSON_PATH, 'utf-8');
-        const signaturesArray: Signature[] = JSON.parse(data);
-        signaturesArray.forEach(s => signatures.set(s.id, s));
-        console.log(`✓ Loaded ${signatures.size} signatures`);
-    } catch {
-        console.log('✓ No existing signatures found, starting fresh');
+        const files = await storage.listFiles('signatures');
+        // Map names to Signature objects
+        // We only have names.
+        const signatures = files.map(name => ({
+            id: name,
+            name: name,
+            filename: name,
+            filepath: name, // Placeholder
+            uploadDate: new Date()
+        }));
+        res.json({ success: true, data: signatures });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Failed to list signatures' });
     }
-}
+});
 
-/**
- * Save signatures to JSON file
- */
-async function saveSignatures(): Promise<void> {
-    const signaturesArray = Array.from(signatures.values());
-    await fs.writeFile(SIGNATURES_JSON_PATH, JSON.stringify(signaturesArray, null, 2));
-}
-
-/**
- * GET /api/files/download/:type/:filename
- * Download a file from storage
- */
-router.get('/download/:type/:filename', asyncHandler(async (req: Request, res: Response) => {
-    const { type, filename } = req.params;
-
-    // Validate storage type
-    const validTypes: StorageType[] = ['templates', 'signatures', 'generated', 'bulk-zips'];
-    if (!validTypes.includes(type as StorageType)) {
-        throw new AppError('Invalid file type', 400, 'INVALID_TYPE');
-    }
-
+// Upload signature
+router.post('/signatures', upload.single('file'), async (req, res) => {
     try {
-        const fileBuffer = await storage.get(type as StorageType, filename);
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No file uploaded' });
+        }
 
-        // Set appropriate content type
-        const ext = path.extname(filename).toLowerCase();
-        const contentTypes: Record<string, string> = {
-            '.pdf': 'application/pdf',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.zip': 'application/zip',
+        // storage.saveFile now uploads to ImageKit and returns {id, name, url}
+        const result = await storage.saveFile(req.file, 'signatures');
+
+        const newSig: Signature = {
+            id: result.id,
+            name: result.name,
+            filename: result.name,
+            uploadDate: new Date(),
+            filepath: result.url
         };
 
-        const contentType = contentTypes[ext] || 'application/octet-stream';
-
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.send(fileBuffer);
-    } catch {
-        throw new AppError('File not found', 404, 'FILE_NOT_FOUND');
+        res.json({ success: true, data: newSig });
+    } catch (error) {
+        console.error('Upload signature error:', error);
+        res.status(500).json({ success: false, error: 'Failed to upload signature' });
     }
-}));
+});
 
-/**
- * GET /api/files/view/:type/:filename
- * View a file (inline display, not download)
- */
-router.get('/view/:type/:filename', asyncHandler(async (req: Request, res: Response) => {
-    const { type, filename } = req.params;
-
-    // Validate storage type
-    const validTypes: StorageType[] = ['templates', 'signatures', 'generated'];
-    if (!validTypes.includes(type as StorageType)) {
-        throw new AppError('Invalid file type', 400, 'INVALID_TYPE');
-    }
-
+// Delete signature
+router.delete('/signatures/:filename', async (req, res) => {
     try {
-        const fileBuffer = await storage.get(type as StorageType, filename);
-
-        // Set appropriate content type
-        const ext = path.extname(filename).toLowerCase();
-        const contentTypes: Record<string, string> = {
-            '.pdf': 'application/pdf',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-        };
-
-        const contentType = contentTypes[ext] || 'application/octet-stream';
-
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', 'inline');
-        res.send(fileBuffer);
-    } catch {
-        throw new AppError('File not found', 404, 'FILE_NOT_FOUND');
+        const success = await storage.deleteFile('signatures', req.params.filename);
+        if (success) {
+            res.json({ success: true, message: 'Signature deleted' });
+        } else {
+            res.status(404).json({ success: false, error: 'Signature not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to delete signature' });
     }
-}));
+});
 
-/**
- * POST /api/files/signature
- * Upload a signature image
- */
-router.post('/signature', uploadSignature, asyncHandler(async (req: Request, res: Response) => {
-    if (!req.file) {
-        throw new AppError('Signature file is required', 400, 'FILE_REQUIRED');
-    }
-
-    const { name } = req.body;
-
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-        throw new AppError('Signature name is required', 400, 'NAME_REQUIRED');
-    }
-
-    const id = uuidv4();
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    const filename = `${id}${ext}`;
-
-    // Save the file
-    const filepath = await storage.save(req.file.buffer, 'signatures', filename);
-
-    const signature: Signature = {
-        id,
-        name: name.trim(),
-        filename,
-        filepath,
-        createdAt: new Date().toISOString(),
-    };
-
-    signatures.set(id, signature);
-    await saveSignatures();
-
-    const response: ApiResponse<Signature> = {
-        success: true,
-        data: signature,
-    };
-
-    res.status(201).json(response);
-}));
-
-/**
- * GET /api/files/signatures
- * List all uploaded signatures
- */
-router.get('/signatures', asyncHandler(async (req: Request, res: Response) => {
-    const signaturesList = Array.from(signatures.values()).map(sig => ({
-        ...sig,
-        previewUrl: storage.getUrl('signatures', sig.filename),
-    }));
-
-    const response: ApiResponse<(Signature & { previewUrl: string })[]> = {
-        success: true,
-        data: signaturesList,
-    };
-
-    res.json(response);
-}));
-
-/**
- * DELETE /api/files/signature/:id
- * Delete a signature
- */
-router.delete('/signature/:id', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-
-    const signature = signatures.get(id);
-    if (!signature) {
-        throw new AppError('Signature not found', 404, 'SIGNATURE_NOT_FOUND');
-    }
-
+// Download file (Generic)
+router.get('/download/:type/:filename', async (req, res) => {
     try {
-        await storage.delete('signatures', signature.filename);
-    } catch {
-        // File might not exist, continue anyway
+        const { type, filename } = req.params;
+        // Validate type
+        if (!['templates', 'generated', 'signatures', 'bulk-zips'].includes(type)) {
+            return res.status(400).json({ success: false, error: 'Invalid file type' });
+        }
+
+        // Redirect to ImageKit public URL?
+        // Or proxy? Proxy allows auth control.
+        // User asked for "file storage in neon" ... nope, ImageKit.
+        // "save their URL into database and from their use it on a real time"
+        // If we use URL, we can just redirect or return URL in API.
+        // This download endpoint was used for serving local files.
+        // Let's redirect to the signed/public URL.
+
+        const url = storage.getPublicUrl(type as StorageType, filename);
+        res.redirect(url);
+    } catch (error) {
+        res.status(404).json({ success: false, error: 'File not found' });
     }
+});
 
-    signatures.delete(id);
-    await saveSignatures();
-
-    const response: ApiResponse<{ deleted: boolean }> = {
-        success: true,
-        data: { deleted: true },
-    };
-
-    res.json(response);
-}));
+// View file (same as download, but semantically for inline viewing)
+router.get('/view/:type/:filename', async (req, res) => {
+    try {
+        const { type, filename } = req.params;
+        // Validate type
+        if (!['templates', 'generated', 'signatures', 'bulk-zips'].includes(type)) {
+            return res.status(400).json({ success: false, error: 'Invalid file type' });
+        }
+        const url = storage.getPublicUrl(type as StorageType, filename);
+        res.redirect(url);
+    } catch (error) {
+        res.status(404).json({ success: false, error: 'File not found' });
+    }
+});
 
 export default router;

@@ -1,224 +1,166 @@
-/**
- * Template Routes
- * API endpoints for template CRUD and attribute management
- * Updated for dynamic attributes
- */
 
-import { Router, Request, Response } from 'express';
-import { asyncHandler, AppError } from '../middleware/error-handler.js';
-import { uploadTemplate } from '../middleware/upload.js';
-import { storage } from '../services/storage.service.js';
+import { Router } from 'express';
+import multer from 'multer';
 import {
     getAllTemplates,
     getTemplateById,
     createTemplate,
-    updateTemplate,
-    updateTemplateAttributes,
-    addAttribute,
-    removeAttribute,
     deleteTemplate,
+    updateTemplate,
+    updateAllAttributes,
+    addAttribute,
+    updateAttribute,
+    deleteAttribute
 } from '../services/template.service.js';
-import { ApiResponse, Template, DynamicAttribute } from '../types/index.js';
+import { uploadConfig } from '../middleware/upload.js';
+import { ApiResponse } from '../types/index.js';
 
 const router = Router();
+const upload = multer(uploadConfig);
 
-/**
- * GET /api/templates
- * List all templates
- */
-router.get('/', asyncHandler(async (req: Request, res: Response) => {
-    const templates = getAllTemplates();
-
-    const response: ApiResponse<Template[]> = {
-        success: true,
-        data: templates,
-    };
-
-    res.json(response);
-}));
-
-/**
- * GET /api/templates/:id
- * Get a single template by ID
- */
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const template = getTemplateById(id);
-
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
+// Get all templates
+router.get('/', async (req, res) => {
+    try {
+        const templates = await getAllTemplates();
+        const response: ApiResponse = {
+            success: true,
+            data: templates
+        };
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to fetch templates' });
     }
+});
 
-    const response: ApiResponse<Template> = {
-        success: true,
-        data: template,
-    };
+// Create new template
+router.post('/', upload.single('template'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No PDF file uploaded' });
+        }
 
-    res.json(response);
-}));
+        // createTemplate now handles everything cleanly
+        const template = await createTemplate(req.file, {
+            name: req.body.name,
+            description: req.body.description
+        });
 
-/**
- * POST /api/templates
- * Create a new template (uploads PDF)
- */
-router.post('/', uploadTemplate, asyncHandler(async (req: Request, res: Response) => {
-    if (!req.file) {
-        throw new AppError('Template file is required', 400, 'FILE_REQUIRED');
+        const response: ApiResponse = {
+            success: true,
+            data: template
+        };
+        res.status(201).json(response);
+    } catch (error) {
+        console.error('Create template error:', error);
+        res.status(500).json({ success: false, error: 'Failed to create template' });
     }
+});
 
-    const { name, description } = req.body;
+// Update template details
+router.patch('/:id', async (req, res) => {
+    try {
+        const { name, description } = req.body;
+        const template = await updateTemplate(req.params.id, { name, description });
 
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-        throw new AppError('Template name is required', 400, 'NAME_REQUIRED');
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
+
+        res.json({ success: true, data: template });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to update template' });
     }
+});
 
-    const template = await createTemplate(req.file, name.trim(), description?.trim());
-
-    const response: ApiResponse<Template> = {
-        success: true,
-        data: template,
-    };
-
-    res.status(201).json(response);
-}));
-
-/**
- * PUT /api/templates/:id
- * Update template metadata (name, description)
- */
-router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const { name, description } = req.body;
-
-    const template = await updateTemplate(id, { name, description });
-
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
+// Get template by ID
+router.get('/:id', async (req, res) => {
+    try {
+        const template = await getTemplateById(req.params.id);
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
+        const response: ApiResponse = {
+            success: true,
+            data: template
+        };
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to fetch template' });
     }
+});
 
-    const response: ApiResponse<Template> = {
-        success: true,
-        data: template,
-    };
-
-    res.json(response);
-}));
-
-/**
- * PUT /api/templates/:id/attributes
- * Update all template attributes (from visual editor)
- * This replaces all existing attributes with the new array
- */
-router.put('/:id/attributes', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const attributes: DynamicAttribute[] = req.body.attributes;
-
-    if (!Array.isArray(attributes)) {
-        throw new AppError('Attributes array is required', 400, 'ATTRIBUTES_REQUIRED');
+// Delete template
+router.delete('/:id', async (req, res) => {
+    try {
+        const success = await deleteTemplate(req.params.id);
+        if (!success) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
+        res.json({ success: true, message: 'Template deleted' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to delete template' });
     }
+});
 
-    const template = await updateTemplateAttributes(id, attributes);
+// =============================================================================
+// Attribute Management Routes
+// =============================================================================
 
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
+// Update ALL attributes (Bulk Save from Editor)
+router.put('/:id/attributes', async (req, res) => {
+    try {
+        const { attributes } = req.body;
+        if (!Array.isArray(attributes)) {
+            return res.status(400).json({ success: false, error: 'Attributes must be an array' });
+        }
+
+        const template = await updateAllAttributes(req.params.id, attributes);
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
+        res.json({ success: true, data: template });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to update attributes' });
     }
+});
 
-    const response: ApiResponse<Template> = {
-        success: true,
-        data: template,
-    };
-
-    res.json(response);
-}));
-
-/**
- * POST /api/templates/:id/attributes
- * Add a new attribute to the template
- */
-router.post('/:id/attributes', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const attribute = req.body;
-
-    if (!attribute || !attribute.name || !attribute.placeholder) {
-        throw new AppError('Attribute name and placeholder are required', 400, 'INVALID_ATTRIBUTE');
+// Add attribute
+router.post('/:id/attributes', async (req, res) => {
+    try {
+        const template = await addAttribute(req.params.id, req.body);
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
+        res.json({ success: true, data: template });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to add attribute' });
     }
+});
 
-    const template = await addAttribute(id, attribute);
-
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
+// Update attribute
+router.put('/:id/attributes/:attrId', async (req, res) => {
+    try {
+        const template = await updateAttribute(req.params.id, req.params.attrId, req.body);
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template or attribute not found' });
+        }
+        res.json({ success: true, data: template });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to update attribute' });
     }
+});
 
-    const response: ApiResponse<Template> = {
-        success: true,
-        data: template,
-    };
-
-    res.status(201).json(response);
-}));
-
-/**
- * DELETE /api/templates/:id/attributes/:attrId
- * Remove an attribute from the template
- */
-router.delete('/:id/attributes/:attrId', asyncHandler(async (req: Request, res: Response) => {
-    const { id, attrId } = req.params;
-
-    const template = await removeAttribute(id, attrId);
-
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
+// Remove attribute
+router.delete('/:id/attributes/:attrId', async (req, res) => {
+    try {
+        const template = await deleteAttribute(req.params.id, req.params.attrId);
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
+        res.json({ success: true, data: template });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to remove attribute' });
     }
-
-    const response: ApiResponse<Template> = {
-        success: true,
-        data: template,
-    };
-
-    res.json(response);
-}));
-
-/**
- * DELETE /api/templates/:id
- * Delete a template
- */
-router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-
-    const deleted = await deleteTemplate(id);
-
-    if (!deleted) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
-    }
-
-    const response: ApiResponse<{ deleted: boolean }> = {
-        success: true,
-        data: { deleted: true },
-    };
-
-    res.json(response);
-}));
-
-/**
- * GET /api/templates/:id/preview
- * Get template file URL for preview
- */
-router.get('/:id/preview', asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const template = getTemplateById(id);
-
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
-    }
-
-    const previewUrl = storage.getUrl('templates', template.filename);
-
-    const response: ApiResponse<{ previewUrl: string }> = {
-        success: true,
-        data: { previewUrl },
-    };
-
-    res.json(response);
-}));
+});
 
 export default router;

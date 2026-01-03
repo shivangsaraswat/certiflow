@@ -1,221 +1,165 @@
-/**
- * Template Service
- * Handles CRUD operations for PDF certificate templates
- * Updated for dynamic, user-defined attributes
- */
 
-import fs from 'fs/promises';
-import path from 'path';
+import { db } from '../lib/db.js';
+import { templates } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { Template, DynamicAttribute } from '../types/index.js';
-import { storage } from './storage.service.js';
-import { getPDFMetadata } from '../engine/renderer.js';
 import { config } from '../config/index.js';
-
-// In-memory template store (in production, use a database)
-const templates: Map<string, Template> = new Map();
-const TEMPLATES_JSON_PATH = path.join(config.storage.root, 'templates.json');
-
-/**
- * Load templates from JSON file on startup
- */
-export async function loadTemplates(): Promise<void> {
-    try {
-        const data = await fs.readFile(TEMPLATES_JSON_PATH, 'utf-8');
-        const templatesArray: Template[] = JSON.parse(data);
-        templatesArray.forEach(t => templates.set(t.id, t));
-        console.log(`✓ Loaded ${templates.size} templates`);
-    } catch {
-        console.log('✓ No existing templates found, starting fresh');
-    }
-}
-
-/**
- * Save templates to JSON file
- */
-async function saveTemplates(): Promise<void> {
-    const templatesArray = Array.from(templates.values());
-    await fs.writeFile(TEMPLATES_JSON_PATH, JSON.stringify(templatesArray, null, 2));
-}
+import path from 'path';
+import fs from 'fs';
+import type { Template, DynamicAttribute } from '../types/index.js';
+import { getPDFMetadata } from '../engine/renderer.js';
+import { storage } from './storage.service.js';
 
 /**
  * Get all templates
  */
-export function getAllTemplates(): Template[] {
-    return Array.from(templates.values()).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+export async function getAllTemplates(): Promise<Template[]> {
+    const allTemplates = await db.select().from(templates);
+    return allTemplates.map(toTemplate);
 }
 
 /**
- * Get a template by ID
+ * Get template by ID
  */
-export function getTemplateById(id: string): Template | undefined {
-    return templates.get(id);
+export async function getTemplateById(id: string): Promise<Template | null> {
+    const result = await db.select().from(templates).where(eq(templates.id, id));
+    return result[0] ? toTemplate(result[0]) : null;
 }
 
 /**
- * Create a new template from an uploaded PDF file
- * Starts with empty attributes - user adds them in the visual editor
+ * Delete template
  */
-export async function createTemplate(
-    file: Express.Multer.File,
-    name: string,
-    description?: string
-): Promise<Template> {
-    // Validate PDF file
-    if (!file.originalname.toLowerCase().endsWith('.pdf')) {
-        throw new Error('Only PDF files are supported as templates');
-    }
+export async function deleteTemplate(id: string): Promise<boolean> {
+    const result = await db.delete(templates).where(eq(templates.id, id)).returning();
+    return result.length > 0;
+}
+
+/**
+ * Create template from file
+ */
+// Create template from file
+export const createTemplate = async (file: Express.Multer.File, data?: { name?: string, description?: string }): Promise<Template> => {
+    // 1. Upload to Storage (ImageKit)
+    // We use the 'templates' type
+    const uploadResult = await storage.saveFile(file, 'templates');
+
+    // 2. Fetch/Extract metadata
+    // We need the file content to extract metadata (pdf-lib needs it).
+    // storage.saveFile returns info, but we also need buffer. 
+    // If we used diskStorage, we might have read it.
+    // In ImageKit provider, we read buffer to upload.
+    // We might need to fetch it back or optimized: read buffer first, then upload?
+    // Let's fetch it back for consistency using getFile
+    const fileBuffer = await storage.getFile('templates', uploadResult.name);
 
     const id = uuidv4();
-    const filename = `${id}.pdf`;
+    const metadata = await getPDFMetadata(fileBuffer);
 
-    // Get PDF metadata (page count, dimensions)
-    const metadata = await getPDFMetadata(file.buffer);
-
-    // Save the file
-    const filepath = await storage.save(file.buffer, 'templates', filename);
-
-    const template: Template = {
+    const newTemplate = {
         id,
-        name,
-        description,
-        filename,
-        filepath,
-        format: 'pdf',
+        name: data?.name || file.originalname.replace(/\.pdf$/i, ''),
+        description: data?.description || '',
+        filename: uploadResult.name, // Use the name stored in ImageKit
+        filepath: uploadResult.name, // Legacy field, keeping consistent with filename for now
+        fileUrl: uploadResult.url,
+        fileId: uploadResult.id,
         pageCount: metadata.pageCount,
         width: metadata.width,
         height: metadata.height,
-        attributes: [],  // Start empty - user adds in visual editor
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        attributes: [] as DynamicAttribute[],
+        createdAt: new Date(),
+        updatedAt: new Date(),
     };
 
-    templates.set(id, template);
-    await saveTemplates();
+    await db.insert(templates).values(newTemplate);
 
-    return template;
-}
+    return toTemplate(newTemplate);
+};
 
-/**
- * Update template metadata (name, description)
- */
-export async function updateTemplate(
-    id: string,
-    updates: Partial<Pick<Template, 'name' | 'description'>>
-): Promise<Template | undefined> {
-    const template = templates.get(id);
-    if (!template) return undefined;
+export const updateTemplate = async (id: string, updates: Partial<Template>): Promise<Template | null> => {
+    // Only allow updating name, description
+    const updateData: any = {};
+    if (updates.name) updateData.name = updates.name;
+    if (updates.description) updateData.description = updates.description;
 
-    const updated: Template = {
-        ...template,
-        ...updates,
-        updatedAt: new Date().toISOString(),
-    };
+    updateData.updatedAt = new Date();
 
-    templates.set(id, updated);
-    await saveTemplates();
+    const result = await db.update(templates)
+        .set(updateData)
+        .where(eq(templates.id, id))
+        .returning();
 
-    return updated;
-}
+    return result[0] ? toTemplate(result[0]) : null;
+};
 
-/**
- * Update template attributes (from visual editor)
- * This is the main method for saving attribute positions
- */
-export async function updateTemplateAttributes(
-    id: string,
-    attributes: DynamicAttribute[]
-): Promise<Template | undefined> {
-    const template = templates.get(id);
-    if (!template) return undefined;
+// Attribute handling helper
+export const addAttribute = async (templateId: string, attribute: Omit<DynamicAttribute, 'id'>): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId);
+    if (!existing) return null;
 
-    // Validate page numbers
-    for (const attr of attributes) {
-        if (attr.page < 1 || attr.page > template.pageCount) {
-            throw new Error(
-                `Invalid page number ${attr.page} for attribute "${attr.name}". Template has ${template.pageCount} page(s).`
-            );
-        }
-    }
-
-    const updated: Template = {
-        ...template,
-        attributes,
-        updatedAt: new Date().toISOString(),
-    };
-
-    templates.set(id, updated);
-    await saveTemplates();
-
-    return updated;
-}
-
-/**
- * Add a single attribute to a template
- */
-export async function addAttribute(
-    id: string,
-    attribute: Omit<DynamicAttribute, 'id'>
-): Promise<Template | undefined> {
-    const template = templates.get(id);
-    if (!template) return undefined;
-
+    const currentAttributes = existing.attributes;
     const newAttribute: DynamicAttribute = {
         ...attribute,
         id: `attr_${uuidv4().substring(0, 8)}`,
     };
 
-    const updated: Template = {
-        ...template,
-        attributes: [...template.attributes, newAttribute],
-        updatedAt: new Date().toISOString(),
+    const updatedAttributes = [...currentAttributes, newAttribute];
+
+    await db.update(templates)
+        .set({ attributes: updatedAttributes, updatedAt: new Date() })
+        .where(eq(templates.id, templateId));
+
+    return getTemplateById(templateId);
+};
+
+export const updateAttribute = async (templateId: string, attributeId: string, updates: Partial<DynamicAttribute>): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId);
+    if (!existing) return null;
+
+    const currentAttributes = existing.attributes;
+    const attrIndex = currentAttributes.findIndex(a => a.id === attributeId);
+    if (attrIndex === -1) return null;
+
+    const updatedAttributes = [...currentAttributes];
+    updatedAttributes[attrIndex] = { ...updatedAttributes[attrIndex], ...updates };
+
+    await db.update(templates)
+        .set({ attributes: updatedAttributes, updatedAt: new Date() })
+        .where(eq(templates.id, templateId));
+
+    return getTemplateById(templateId);
+};
+
+export const deleteAttribute = async (templateId: string, attributeId: string): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId);
+    if (!existing) return null;
+
+    const updatedAttributes = existing.attributes.filter(a => a.id !== attributeId);
+
+    await db.update(templates)
+        .set({ attributes: updatedAttributes, updatedAt: new Date() })
+        .where(eq(templates.id, templateId));
+
+    return getTemplateById(templateId);
+};
+
+export const updateAllAttributes = async (templateId: string, attributes: DynamicAttribute[]): Promise<Template | null> => {
+    const existing = await getTemplateById(templateId);
+    if (!existing) return null;
+
+    await db.update(templates)
+        .set({ attributes: attributes, updatedAt: new Date() })
+        .where(eq(templates.id, templateId));
+
+    return getTemplateById(templateId);
+};
+
+
+// Helper to cast DB result to correct types
+function toTemplate(dbRecord: any): Template {
+    return {
+        ...dbRecord,
+        attributes: (dbRecord.attributes as DynamicAttribute[]) ?? [],
+        format: 'pdf', // Hardcoded as we only support PDF
     };
-
-    templates.set(id, updated);
-    await saveTemplates();
-
-    return updated;
-}
-
-/**
- * Remove an attribute from a template
- */
-export async function removeAttribute(
-    templateId: string,
-    attributeId: string
-): Promise<Template | undefined> {
-    const template = templates.get(templateId);
-    if (!template) return undefined;
-
-    const updated: Template = {
-        ...template,
-        attributes: template.attributes.filter(a => a.id !== attributeId),
-        updatedAt: new Date().toISOString(),
-    };
-
-    templates.set(templateId, updated);
-    await saveTemplates();
-
-    return updated;
-}
-
-/**
- * Delete a template
- */
-export async function deleteTemplate(id: string): Promise<boolean> {
-    const template = templates.get(id);
-    if (!template) return false;
-
-    try {
-        await storage.delete('templates', template.filename);
-    } catch {
-        // File might not exist, continue anyway
-    }
-
-    templates.delete(id);
-    await saveTemplates();
-
-    return true;
 }

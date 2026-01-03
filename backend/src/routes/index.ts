@@ -7,6 +7,7 @@ import { Router } from 'express';
 import templateRoutes from './templates.js';
 import generateRoutes from './generate.js';
 import fileRoutes from './files.js';
+import historyRoutes from './history.js';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ const router = Router();
 router.use('/templates', templateRoutes);
 router.use('/generate', generateRoutes);
 router.use('/files', fileRoutes);
+router.use('/history', historyRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

@@ -1,20 +1,21 @@
-/**
- * Certificate Generation Routes
- * API endpoints for single and bulk certificate generation
- * Updated for dynamic attributes
- */
 
-import { Router, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
-import { asyncHandler, AppError } from '../middleware/error-handler.js';
-import { uploadCSV } from '../middleware/upload.js';
+import { Router } from 'express';
+import multer from 'multer';
 import { getTemplateById } from '../services/template.service.js';
-import { renderCertificate, generateCertificateId } from '../engine/renderer.js';
-import { processBulkGeneration, getCSVHeaders } from '../services/bulk.service.js';
 import { storage } from '../services/storage.service.js';
+import {
+    createCertificateRecord,
+    getCertificateByCode
+} from '../services/certificate.service.js';
+import {
+    processBulkGeneration,
+    getCSVHeaders
+} from '../services/bulk.service.js';
+import { renderCertificate, generateCertificateId } from '../engine/renderer.js';
+import { uploadConfig } from '../middleware/upload.js';
+import { config } from '../config/index.js';
+import path from 'path';
+import fs from 'fs';
 import {
     ApiResponse,
     GenerationResult,
@@ -23,171 +24,108 @@ import {
 } from '../types/index.js';
 
 const router = Router();
+const upload = multer(uploadConfig);
 
-/**
- * POST /api/generate/single
- * Generate a single certificate
- * Data keys should match the attribute IDs defined in the template
- */
-router.post('/single', asyncHandler(async (req: Request, res: Response) => {
-    const { templateId, data } = req.body;
-
-    // Validate request
-    if (!templateId) {
-        throw new AppError('Template ID is required', 400, 'TEMPLATE_ID_REQUIRED');
-    }
-
-    if (!data || typeof data !== 'object') {
-        throw new AppError('Certificate data is required', 400, 'DATA_REQUIRED');
-    }
-
-    // Get template
-    const template = getTemplateById(templateId);
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
-    }
-
-    // Validate required attributes
-    const missingRequired = template.attributes
-        .filter(attr => attr.required && !data[attr.id])
-        .map(attr => attr.name);
-
-    if (missingRequired.length > 0) {
-        throw new AppError(
-            `Missing required fields: ${missingRequired.join(', ')}`,
-            400,
-            'MISSING_REQUIRED_FIELDS'
-        );
-    }
-
-    // Prepare certificate data
-    const certificateId = generateCertificateId();
-    const certificateData: CertificateData = {
-        ...data,
-        _certificateId: certificateId,  // Internal use
-    };
-
-    // Generate certificate
-    const pdfBuffer = await renderCertificate(template, certificateData);
-
-    // Save to storage
-    const filename = `${certificateId}.pdf`;
-    await storage.save(pdfBuffer, 'generated', filename);
-
-    const result: GenerationResult = {
-        certificateId,
-        filename,
-        downloadUrl: storage.getUrl('generated', filename),
-    };
-
-    const response: ApiResponse<GenerationResult> = {
-        success: true,
-        data: result,
-    };
-
-    res.status(201).json(response);
-}));
-
-/**
- * POST /api/generate/bulk
- * Generate certificates in bulk from a CSV file
- */
-router.post('/bulk', uploadCSV, asyncHandler(async (req: Request, res: Response) => {
-    if (!req.file) {
-        throw new AppError('CSV file is required', 400, 'FILE_REQUIRED');
-    }
-
-    const { templateId, columnMapping } = req.body;
-
-    // Validate request
-    if (!templateId) {
-        throw new AppError('Template ID is required', 400, 'TEMPLATE_ID_REQUIRED');
-    }
-
-    // Parse column mapping from JSON string if needed
-    let parsedMapping: Record<string, string>;
+// Generate single certificate
+router.post('/single', async (req, res) => {
     try {
-        parsedMapping = typeof columnMapping === 'string'
-            ? JSON.parse(columnMapping)
-            : columnMapping;
-    } catch {
-        throw new AppError('Invalid column mapping format', 400, 'INVALID_MAPPING');
-    }
+        const { templateId, data, recipientName } = req.body;
 
-    if (!parsedMapping || typeof parsedMapping !== 'object') {
-        throw new AppError('Column mapping is required', 400, 'MAPPING_REQUIRED');
-    }
+        const template = await getTemplateById(templateId);
+        if (!template) {
+            return res.status(404).json({ success: false, error: 'Template not found' });
+        }
 
-    // Get template
-    const template = getTemplateById(templateId);
-    if (!template) {
-        throw new AppError('Template not found', 404, 'TEMPLATE_NOT_FOUND');
-    }
+        // Generate Code & Filename
+        const certificateCode = generateCertificateId();
+        const filename = `${certificateCode}.pdf`;
 
-    // Save CSV to temp file
-    const tempCsvPath = path.join(os.tmpdir(), `bulk-${uuidv4()}.csv`);
-    await fs.writeFile(tempCsvPath, req.file.buffer);
+        // Render PDF (Buffer)
+        const pdfBuffer = await renderCertificate(template, data as CertificateData);
 
-    try {
-        // Process bulk generation
-        const result = await processBulkGeneration(template, tempCsvPath, parsedMapping);
+        // Upload to ImageKit
+        // We pass a path like string to trigger folder logic in uploadBuffer, e.g. "generated/Code.pdf"
+        const uploadPath = `generated/${filename}`;
+        const uploadResult = await storage.uploadBuffer(pdfBuffer, uploadPath);
 
-        const response: ApiResponse<BulkGenerationResult> = {
+        // Save Record
+        await createCertificateRecord({
+            certificateCode,
+            templateId,
+            recipientName: recipientName || 'Unknown Recipient',
+            data,
+            filename,
+            filepath: filename, // Legacy: stored as filename
+            fileUrl: uploadResult.url,
+            fileId: uploadResult.id,
+            generationMode: 'single',
+            bulkJobId: null
+        });
+
+        const response: ApiResponse<GenerationResult> = {
             success: true,
-            data: result,
-        };
-
-        res.status(201).json(response);
-    } finally {
-        // Clean up temp file
-        await fs.unlink(tempCsvPath).catch(() => { });
-    }
-}));
-
-/**
- * POST /api/generate/bulk/preview
- * Get CSV headers for column mapping
- */
-router.post('/bulk/preview', uploadCSV, asyncHandler(async (req: Request, res: Response) => {
-    if (!req.file) {
-        throw new AppError('CSV file is required', 400, 'FILE_REQUIRED');
-    }
-
-    // Save CSV to temp file
-    const tempCsvPath = path.join(os.tmpdir(), `preview-${uuidv4()}.csv`);
-    await fs.writeFile(tempCsvPath, req.file.buffer);
-
-    try {
-        const headers = await getCSVHeaders(tempCsvPath);
-
-        const response: ApiResponse<{ headers: string[] }> = {
-            success: true,
-            data: { headers },
+            data: {
+                certificateId: certificateCode,
+                filename,
+                downloadUrl: `/api/files/download/generated/${filename}` // Keeps existing frontend flow or we can pass uploadResult.url directly?
+                // Frontend expects downloadUrl. Our files route will redirect to ImageKit.
+            }
         };
 
         res.json(response);
-    } finally {
-        // Clean up temp file
-        await fs.unlink(tempCsvPath).catch(() => { });
+    } catch (error) {
+        console.error('Generation Validation Error:', error);
+        res.status(400).json({ success: false, error: (error as Error).message });
     }
-}));
+});
 
-/**
- * POST /api/generate/download
- * Download a generated certificate (returns PDF directly)
- */
-router.get('/download/:filename', asyncHandler(async (req: Request, res: Response) => {
-    const { filename } = req.params;
-
+// Bulk Generation - Step 1: Upload CSV and Get Headers
+router.post('/bulk/upload', upload.single('file'), async (req, res) => {
     try {
-        const pdfBuffer = await storage.get('generated', filename);
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No CSV file uploaded' });
+        }
 
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.send(pdfBuffer);
-    } catch {
-        throw new AppError('Certificate not found', 404, 'CERTIFICATE_NOT_FOUND');
+        // Return headers for mapping
+        const headers = await getCSVHeaders(req.file.path);
+
+        res.json({
+            success: true,
+            data: {
+                filename: req.file.filename,
+                filepath: req.file.path,
+                headers
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to process CSV' });
     }
-}));
+});
+
+// Bulk Generation - Step 2: Start Job
+router.post('/bulk/start', async (req, res) => {
+    try {
+        const { templateId, csvFilepath, mapping } = req.body;
+
+        if (!templateId || !csvFilepath || !mapping) {
+            return res.status(400).json({ success: false, error: 'Missing required parameters' });
+        }
+
+        const jobId = await processBulkGeneration(templateId, csvFilepath, mapping);
+
+        const response: ApiResponse<BulkGenerationResult> = {
+            success: true,
+            data: {
+                jobId,
+                message: 'Bulk generation started'
+            }
+        };
+
+        res.json(response);
+    } catch (error) {
+        console.error('Bulk Start Error:', error);
+        res.status(500).json({ success: false, error: 'Failed to start bulk generation' });
+    }
+});
 
 export default router;
