@@ -8,10 +8,15 @@
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { LoadingPage } from '@/components/shared/loading-spinner';
-import { TemplateEditor } from '@/components/editor/template-editor';
 import { getTemplate } from '@/lib/api';
+
+const TemplateEditor = dynamic(
+    () => import('@/components/editor/template-editor').then((mod) => mod.TemplateEditor),
+    { ssr: false, loading: () => <LoadingPage message="Loading editor..." /> }
+);
 import type { Template } from '@/types';
 
 interface PageProps {

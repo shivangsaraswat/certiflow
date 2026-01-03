@@ -1,203 +1,297 @@
-/**
- * Bulk Certificate Processing Service
- * Handles batch certificate generation from CSV files
- * Updated for dynamic attributes
- */
 
 import { parse } from 'csv-parse';
-import { createReadStream } from 'fs';
-import archiver from 'archiver';
-import { createWriteStream } from 'fs';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
-import {
-    Template,
-    CertificateData,
-    BulkGenerationResult,
-    BulkError,
-    CSVRecord,
-    GenerationResult
-} from '../types/index.js';
+import archiver from 'archiver';
+import { db } from '../lib/db.js';
+import { bulkJobs, certificates } from '../db/schema.js';
+import { eq, desc } from 'drizzle-orm';
+
+import { config } from '../config/index.js';
 import { renderCertificate, generateCertificateId } from '../engine/renderer.js';
 import { storage } from './storage.service.js';
-import { config } from '../config/index.js';
+import { getTemplateById } from './template.service.js';
+import type { Template } from '../types/index.js';
+import { createCertificateRecord } from './certificate.service.js';
 
-/**
- * Process a CSV file and generate certificates in batches
- * 
- * @param template - The template to use
- * @param csvPath - Path to the CSV file
- * @param columnMapping - Maps CSV column names to attribute IDs
- */
+export interface BulkJobRecord {
+    id: string;
+    templateId: string;
+    sourceType: string;
+    totalRecords: number;
+    successful: number;
+    failed: number;
+    status: string;
+    zipFilename: string | null;
+    zipFilepath: string | null;
+    errors: BulkError[] | null;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface BulkError {
+    row: number;
+    error: string;
+    data?: any;
+}
+
+interface CSVRecord {
+    [key: string]: string;
+}
+
+interface CertificateData {
+    [key: string]: string;
+}
+
+export async function getCSVHeaders(filepath: string): Promise<string[]> {
+    const parser = fs.createReadStream(filepath).pipe(parse({
+        to: 1, // Only read first line
+        trim: true
+    }));
+
+    for await (const record of parser) {
+        return record;
+    }
+    return [];
+}
+
 export async function processBulkGeneration(
-    template: Template,
-    csvPath: string,
-    columnMapping: Record<string, string>
-): Promise<BulkGenerationResult> {
+    templateId: string,
+    csvFilepath: string,
+    columnMapping: Record<string, string> // CSV Column -> Attribute Name (changed from ID)
+): Promise<string> {
     const jobId = uuidv4();
-    const batchSize = config.certificate.maxBulkBatchSize;
+    const template = await getTemplateById(templateId);
 
-    // Parse CSV file
-    const records = await parseCSVFile(csvPath);
-
-    const results: GenerationResult[] = [];
-    const errors: BulkError[] = [];
-    const generatedFiles: string[] = [];
-
-    // Process in batches for memory efficiency
-    for (let i = 0; i < records.length; i += batchSize) {
-        const batch = records.slice(i, i + batchSize);
-
-        const batchResults = await Promise.allSettled(
-            batch.map(async (record, batchIndex) => {
-                const rowNumber = i + batchIndex + 2; // +2 for header row and 0-indexing
-
-                try {
-                    // Map CSV columns to certificate data (attribute IDs)
-                    const data = mapRecordToData(record, columnMapping, template);
-
-                    // Generate certificate
-                    const pdfBuffer = await renderCertificate(template, data);
-
-                    // Save to storage
-                    const certId = generateCertificateId();
-                    const filename = `${certId}.pdf`;
-                    await storage.save(pdfBuffer, 'generated', filename);
-
-                    generatedFiles.push(filename);
-
-                    return {
-                        certificateId: certId,
-                        filename,
-                        downloadUrl: storage.getUrl('generated', filename),
-                    };
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Unknown error';
-                    throw { row: rowNumber, message };
-                }
-            })
-        );
-
-        // Collect results and errors
-        for (const result of batchResults) {
-            if (result.status === 'fulfilled') {
-                results.push(result.value);
-            } else {
-                const reason = result.reason as BulkError;
-                errors.push(reason);
-            }
-        }
-
-        // Allow garbage collection between batches
-        await new Promise<void>(resolve => setImmediate(resolve));
+    if (!template) {
+        throw new Error('Template not found');
     }
 
-    // Create ZIP file with all generated certificates
-    const zipFilename = `bulk-${jobId}.zip`;
-    await createBulkZip(generatedFiles, zipFilename);
+    // 1. Parse CSV to get total count
+    const records: CSVRecord[] = [];
+    const parser = fs.createReadStream(csvFilepath).pipe(parse({
+        columns: true,
+        skip_empty_lines: true,
+        trim: true
+    }));
 
-    return {
-        jobId,
-        totalRequested: records.length,
-        successful: results.length,
-        failed: errors.length,
-        zipUrl: storage.getUrl('bulk-zips', zipFilename),
-        errors: errors.length > 0 ? errors : undefined,
+    for await (const record of parser) {
+        records.push(record);
+    }
+
+    // 2. Create Job Record
+    const newJob = {
+        id: jobId,
+        templateId,
+        sourceType: 'csv',
+        totalRecords: records.length,
+        status: 'processing',
+        successful: 0,
+        failed: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        errors: [] as BulkError[], // Store empty array as json
     };
-}
 
-/**
- * Parse a CSV file and return records
- */
-async function parseCSVFile(csvPath: string): Promise<CSVRecord[]> {
-    return new Promise((resolve, reject) => {
-        const records: CSVRecord[] = [];
+    await db.insert(bulkJobs).values(newJob as any); // Type cast for errors JSON
 
-        createReadStream(csvPath)
-            .pipe(parse({
-                columns: true,
-                skip_empty_lines: true,
-                trim: true,
-            }))
-            .on('data', (record: CSVRecord) => {
-                records.push(record);
-            })
-            .on('end', () => resolve(records))
-            .on('error', reject);
+    // 3. Start async processing
+    processBatch(jobId, template, records, columnMapping).catch(err => {
+        console.error(`Bulk job ${jobId} crashed:`, err);
+        updateJobStatus(jobId, 'failed');
     });
+
+    return jobId;
 }
 
-/**
- * Map a CSV record to certificate data using column mapping
- * 
- * @param record - The CSV record
- * @param columnMapping - Maps CSV column names to attribute IDs
- * @param template - The template with attribute definitions
- */
-function mapRecordToData(
-    record: CSVRecord,
-    columnMapping: Record<string, string>,
-    template: Template
-): CertificateData {
-    const data: CertificateData = {};
+async function processBatch(
+    jobId: string,
+    template: Template,
+    records: CSVRecord[],
+    columnMapping: Record<string, string>
+) {
+    // Only use temp dir for ZIP creation
+    const tempDir = path.join(os.tmpdir(), 'certif-bulk');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-    // Map each CSV column to its corresponding attribute ID
-    for (const [csvColumn, attrId] of Object.entries(columnMapping)) {
-        const value = record[csvColumn];
-        if (value !== undefined && value !== '') {
-            data[attrId] = value;
+    const zipFilename = `certificates-${jobId}.zip`;
+    const zipFilepath = path.join(tempDir, zipFilename);
+    const output = fs.createWriteStream(zipFilepath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.pipe(output);
+
+    const errors: BulkError[] = [];
+    let successful = 0;
+    let failed = 0;
+
+    for (const [index, record] of records.entries()) {
+        try {
+            const certData: CertificateData = {};
+
+            // Map data
+            for (const [csvHeader, attrName] of Object.entries(columnMapping)) {
+                const attr = template.attributes.find(a => a.name === attrName);
+                if (attr) {
+                    certData[attr.id] = record[csvHeader];
+                }
+            }
+
+            // Generate Certificate
+            const certId = generateCertificateId(template.id, index);
+            const filename = `${certId}.pdf`;
+
+            // Render to Buffer (No local file save)
+            const pdfBuffer = await renderCertificate(template, certData);
+
+            // Upload PDF to ImageKit
+            const uploadPath = `generated/${filename}`;
+            const uploadResult = await storage.uploadBuffer(pdfBuffer, uploadPath);
+
+            // Add Buffer to ZIP stream
+            archive.append(pdfBuffer, { name: filename });
+
+            // Track in Database
+            const recipientName = certData[template.attributes[0]?.id] || 'Unknown';
+
+            await createCertificateRecord({
+                certificateCode: certId,
+                templateId: template.id,
+                recipientName: recipientName,
+                data: certData,
+                filename: filename,
+                filepath: filename, // Legacy
+                fileUrl: uploadResult.url,
+                fileId: uploadResult.id,
+                generationMode: 'bulk',
+                bulkJobId: jobId
+            });
+
+            successful++;
+
+            // Update progress periodically
+            if (index % 10 === 0) {
+                await updateJobProgress(jobId, successful, failed);
+            }
+
+        } catch (error: any) {
+            console.error(`Error processing row ${index}:`, error);
+            failed++;
+            errors.push({
+                row: index + 1,
+                error: error.message || 'Unknown error',
+                data: record
+            });
+            await updateJobProgress(jobId, successful, failed, errors);
         }
     }
 
-    // Validate required attributes
-    for (const attr of template.attributes) {
-        if (attr.required && !data[attr.id]) {
-            throw new Error(`Missing required field: ${attr.name}`);
+    // Finalize ZIP
+    await archive.finalize();
+
+    // Wait for stream to close
+    await new Promise<void>((resolve, reject) => {
+        output.on('close', resolve);
+        output.on('error', reject);
+    });
+
+    // Upload ZIP to ImageKit
+    let zipUrl = '';
+    let zipId = '';
+
+    if (successful > 0) {
+        try {
+            // Read temp zip
+            const zipBuffer = fs.readFileSync(zipFilepath);
+            const zipUploadPath = `bulk-zips/${zipFilename}`;
+            const zipResult = await storage.uploadBuffer(zipBuffer, zipUploadPath);
+            zipUrl = zipResult.url;
+            zipId = zipResult.id;
+        } catch (e) {
+            console.error('Failed to upload ZIP:', e);
+            // Don't fail the job, but log it?
         }
     }
 
-    return data;
+    // Cleanup Temp Zip
+    if (fs.existsSync(zipFilepath)) {
+        fs.unlinkSync(zipFilepath);
+    }
+
+    // Final Update
+    await db.update(bulkJobs)
+        .set({
+            status: failed === records.length ? 'failed' : 'completed',
+            successful,
+            failed,
+            zipFilename,
+            zipFilepath: zipFilename, // Legacy
+            zipFileUrl: zipUrl,
+            zipFileId: zipId,
+            errors: errors as any,
+            updatedAt: new Date()
+        })
+        .where(eq(bulkJobs.id, jobId));
 }
 
-/**
- * Create a ZIP file containing all generated certificates
- */
-async function createBulkZip(
-    filenames: string[],
-    zipFilename: string
-): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        const zipPath = storage.getPath('bulk-zips', zipFilename);
-        const output = createWriteStream(zipPath);
-        const archive = archiver('zip', { zlib: { level: 5 } });
+async function updateJobProgress(id: string, successful: number, failed: number, errors?: BulkError[]) {
+    const updateData: any = { successful, failed, updatedAt: new Date() };
+    if (errors) updateData.errors = errors;
+
+    await db.update(bulkJobs)
+        .set(updateData)
+        .where(eq(bulkJobs.id, id));
+}
+
+async function updateJobStatus(id: string, status: string) {
+    await db.update(bulkJobs)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(bulkJobs.id, id));
+}
+
+async function createZip(sourceDir: string, files: string[], zipPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const output = fs.createWriteStream(zipPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
 
         output.on('close', () => resolve());
-        archive.on('error', reject);
+        archive.on('error', (err) => reject(err));
 
         archive.pipe(output);
 
-        // Add each generated certificate to the ZIP
-        for (const filename of filenames) {
-            const filePath = storage.getPath('generated', filename);
-            archive.file(filePath, { name: filename });
-        }
+        files.forEach(file => {
+            archive.file(path.join(sourceDir, file), { name: file });
+        });
 
-        await archive.finalize();
+        archive.finalize();
     });
 }
 
-/**
- * Get CSV column headers from a file
- */
-export async function getCSVHeaders(csvPath: string): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-        createReadStream(csvPath)
-            .pipe(parse({
-                columns: false,
-                to_line: 1,
-            }))
-            .on('data', (row: string[]) => {
-                resolve(row);
-            })
-            .on('error', reject);
-    });
+export async function getBulkJobs(limit = 10, offset = 0) {
+    const jobs = await db.select().from(bulkJobs)
+        .orderBy(desc(bulkJobs.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    const all = await db.select({ id: bulkJobs.id }).from(bulkJobs);
+
+    return {
+        jobs: jobs.map(j => ({
+            ...j,
+            errors: j.errors as BulkError[] | null,
+        })),
+        total: all.length
+    };
+}
+
+export async function getBulkJobById(id: string) {
+    const result = await db.select().from(bulkJobs).where(eq(bulkJobs.id, id));
+    if (!result[0]) return null;
+
+    return {
+        ...result[0],
+        errors: result[0].errors as BulkError[] | null
+    };
 }

@@ -1,22 +1,13 @@
-/**
- * Error Handler Middleware
- * Centralized error handling for the Express application
- */
 
 import { Request, Response, NextFunction } from 'express';
 import { ApiResponse } from '../types/index.js';
 
 export class AppError extends Error {
-    public statusCode: number;
-    public code: string;
-    public details?: Record<string, string>;
+    statusCode: number;
+    code: string;
+    details?: Record<string, string>;
 
-    constructor(
-        message: string,
-        statusCode: number = 500,
-        code: string = 'INTERNAL_ERROR',
-        details?: Record<string, string>
-    ) {
+    constructor(statusCode: number, message: string, code: string = 'INTERNAL_ERROR', details?: Record<string, string>) {
         super(message);
         this.statusCode = statusCode;
         this.code = code;
@@ -25,74 +16,39 @@ export class AppError extends Error {
     }
 }
 
-export function errorHandler(
-    err: Error | AppError,
-    req: Request,
-    res: Response,
-    next: NextFunction
-): void {
-    console.error('Error:', err);
+export const notFoundHandler = (req: Request, res: Response, next: NextFunction) => {
+    const error = new AppError(404, `Route ${req.originalUrl} not found`, 'NOT_FOUND');
+    next(error);
+};
+
+export const errorHandler = (err: Error | AppError, req: Request, res: Response, next: NextFunction) => {
+    console.error('Error:', {
+        message: err.message,
+        stack: err.stack,
+        url: req.originalUrl,
+        method: req.method,
+    });
 
     if (err instanceof AppError) {
-        const response: ApiResponse<null> = {
+        const response: ApiResponse = {
             success: false,
-            error: {
-                code: err.code,
-                message: err.message,
-                details: err.details,
-            },
+            error: err.message, // Return just the message string as expected by ApiResponse
+            // We could extend ApiResponse to include code/details if needed, but for now strict compliance
         };
-        res.status(err.statusCode).json(response);
-        return;
+        return res.status(err.statusCode).json(response);
     }
 
-    // Handle multer errors
-    if (err.name === 'MulterError') {
-        const response: ApiResponse<null> = {
+    // Handle Multer mismatch errors
+    if ((err as any).code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
             success: false,
-            error: {
-                code: 'FILE_UPLOAD_ERROR',
-                message: err.message,
-            },
-        };
-        res.status(400).json(response);
-        return;
+            error: 'File is too large'
+        });
     }
 
-    // Default error response
-    const response: ApiResponse<null> = {
+    // Default error
+    return res.status(500).json({
         success: false,
-        error: {
-            code: 'INTERNAL_ERROR',
-            message: process.env.NODE_ENV === 'production'
-                ? 'An unexpected error occurred'
-                : err.message,
-        },
-    };
-    res.status(500).json(response);
-}
-
-/**
- * Async handler wrapper to catch errors in async route handlers
- */
-export function asyncHandler(
-    fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
-) {
-    return (req: Request, res: Response, next: NextFunction) => {
-        Promise.resolve(fn(req, res, next)).catch(next);
-    };
-}
-
-/**
- * Not found handler
- */
-export function notFoundHandler(req: Request, res: Response): void {
-    const response: ApiResponse<null> = {
-        success: false,
-        error: {
-            code: 'NOT_FOUND',
-            message: `Route ${req.method} ${req.path} not found`,
-        },
-    };
-    res.status(404).json(response);
-}
+        error: 'Internal Server Error'
+    });
+};

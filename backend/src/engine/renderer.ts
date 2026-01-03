@@ -54,7 +54,11 @@ export async function renderCertificate(
     }
 
     // 5. Save and return the modified PDF
+    // 5. Save and return the modified PDF
     const pdfBytes = await pdfDoc.save();
+
+    // Side-effect removed: Caller is responsible for saving/uploading.
+
     return Buffer.from(pdfBytes);
 }
 
@@ -63,12 +67,13 @@ export async function renderCertificate(
  */
 async function embedFonts(pdfDoc: PDFDocument): Promise<Record<SupportedFont, PDFFont>> {
     const fonts: Record<SupportedFont, PDFFont> = {
-        'Helvetica': await pdfDoc.embedFont(StandardFonts.Helvetica),
-        'Helvetica-Bold': await pdfDoc.embedFont(StandardFonts.HelveticaBold),
-        'Times-Roman': await pdfDoc.embedFont(StandardFonts.TimesRoman),
-        'Times-Bold': await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
-        'Courier': await pdfDoc.embedFont(StandardFonts.Courier),
-        'Courier-Bold': await pdfDoc.embedFont(StandardFonts.CourierBold),
+        'Inter': await pdfDoc.embedFont(StandardFonts.Helvetica),
+        'Roboto': await pdfDoc.embedFont(StandardFonts.Helvetica),
+        'Great Vibes': await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+        'Dancing Script': await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+        'Playfair Display': await pdfDoc.embedFont(StandardFonts.TimesRoman),
+        'Montserrat': await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+        // Fallbacks standard fonts if needed, but the type expects keys from FONT_MAPPING
     };
     return fonts;
 }
@@ -78,22 +83,17 @@ async function embedFonts(pdfDoc: PDFDocument): Promise<Record<SupportedFont, PD
  */
 function getFont(
     fonts: Record<SupportedFont, PDFFont>,
-    fontFamily: string,
-    fontWeight?: 'normal' | 'bold'
+    fontFamily: string | undefined, // Allow undefined
+    fontWeight?: string
 ): PDFFont {
     // Map user font to standard font
-    const baseFont = FONT_MAPPING[fontFamily] || 'Helvetica';
+    // @ts-ignore
+    const baseFontKey = (fontFamily && FONT_MAPPING[fontFamily]) ? fontFamily : 'Inter';
+    const baseFont = fonts[baseFontKey as SupportedFont];
 
-    // Get bold variant if needed
-    if (fontWeight === 'bold') {
-        const boldFont = `${baseFont.replace('-Roman', '')}-Bold` as SupportedFont;
-        if (fonts[boldFont]) {
-            return fonts[boldFont];
-        }
-    }
-
-    return fonts[baseFont] || fonts['Helvetica'];
+    return baseFont || fonts['Inter'];
 }
+
 
 /**
  * Parse hex color to RGB values (0-1 range)
@@ -238,15 +238,25 @@ async function drawSignature(
 /**
  * Generate a unique certificate ID
  */
-export function generateCertificateId(): string {
+export function generateCertificateId(templateId?: string, index?: number): string {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `CERT-${timestamp}-${random}`;
+    const suffix = index !== undefined ? `-${index}` : '';
+    return `CERT-${timestamp}-${random}${suffix}`;
 }
 
 /**
- * Get PDF metadata (dimensions, page count)
+ * Extract PDF metadata (dimensions, page count)
  */
+export async function extractMetadata(filepath: string): Promise<{
+    pageCount: number;
+    width: number;
+    height: number;
+}> {
+    const buffer = await storage.get('templates', filepath.split('/').pop() || filepath);
+    return getPDFMetadata(buffer);
+}
+
 export async function getPDFMetadata(pdfBuffer: Buffer): Promise<{
     pageCount: number;
     width: number;
@@ -259,7 +269,6 @@ export async function getPDFMetadata(pdfBuffer: Buffer): Promise<{
         throw new Error('PDF has no pages');
     }
 
-    // Get first page dimensions (in points)
     const firstPage = pages[0];
     const { width, height } = firstPage.getSize();
 
