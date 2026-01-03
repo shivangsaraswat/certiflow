@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Workbook } from '@fortune-sheet/react';
 import '@fortune-sheet/react/dist/index.css';
 import { Button } from '@/components/ui/button';
@@ -9,10 +9,70 @@ import { ArrowLeft, Save, Loader2, Cloud, CheckCircle2 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { toast } from 'sonner';
 
-export default function SheetEditorPage() {
+/**
+ * Convert FortuneSheet's internal 2D `data` array format back to sparse `celldata` format.
+ * FortuneSheet's onChange returns sheets with `data` (2D array), but initialization 
+ * requires `celldata` (sparse array with {r, c, v} objects).
+ */
+function convertDataToCelldata(data: any[][]): any[] {
+    const celldata: any[] = [];
+    if (!data || !Array.isArray(data)) return celldata;
+
+    for (let r = 0; r < data.length; r++) {
+        const row = data[r];
+        if (!row || !Array.isArray(row)) continue;
+
+        for (let c = 0; c < row.length; c++) {
+            const cell = row[c];
+            // Only include non-null cells
+            if (cell !== null && cell !== undefined) {
+                celldata.push({ r, c, v: cell });
+            }
+        }
+    }
+    return celldata;
+}
+
+/**
+ * Normalize sheet data for FortuneSheet initialization.
+ * Ensures each sheet has `celldata` format (not `data` format).
+ */
+function normalizeSheetData(sheets: any[]): any[] {
+    if (!sheets || !Array.isArray(sheets)) {
+        return [{ name: 'Sheet1', celldata: [] }];
+    }
+
+    return sheets.map((sheet, index) => {
+        // If sheet has `data` (2D array) but no `celldata`, convert it
+        if (sheet.data && Array.isArray(sheet.data) && (!sheet.celldata || sheet.celldata.length === 0)) {
+            const celldata = convertDataToCelldata(sheet.data);
+            // Return sheet with celldata, removing the data property to avoid confusion
+            const { data, ...rest } = sheet;
+            return {
+                ...rest,
+                name: sheet.name || `Sheet${index + 1}`,
+                celldata,
+            };
+        }
+
+        // Already has celldata or is empty - return as-is but ensure name exists
+        return {
+            ...sheet,
+            name: sheet.name || `Sheet${index + 1}`,
+            celldata: sheet.celldata || [],
+        };
+    });
+}
+
+function SheetEditorContent() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const id = params?.id as string;
+
+    // Return navigation support for wizard flow
+    const returnTo = searchParams.get('returnTo');
+    const wizardStep = searchParams.get('wizardStep');
 
     const [sheet, setSheet] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -35,12 +95,17 @@ export default function SheetEditorPage() {
             const data = await res.json();
 
             if (data.success) {
-                // Ensure content is compatible with FortuneSheet
-                // If content is empty array or invalid, format it
-                let content = data.data.content;
-                if (!content || content.length === 0) {
-                    content = [{ name: 'Sheet1', celldata: [] }];
-                }
+                // Normalize content to ensure celldata format for FortuneSheet initialization
+                // This handles the case where saved data is in 2D `data` format from onChange
+                const content = normalizeSheetData(data.data.content);
+
+                console.log('[Spreadsheet Load] Normalized content:',
+                    content.map((s: any) => ({
+                        name: s.name,
+                        celldataLength: s.celldata?.length || 0,
+                        hasData: !!s.data
+                    }))
+                );
 
                 setSheet({
                     ...data.data,
@@ -89,6 +154,12 @@ export default function SheetEditorPage() {
             if (res.ok) {
                 setLastSaved(new Date());
                 toast.success('Saved successfully');
+
+                // If we have a return URL, redirect after save
+                if (returnTo) {
+                    const returnUrl = wizardStep ? `${returnTo}?wizardStep=${wizardStep}` : returnTo;
+                    router.push(returnUrl);
+                }
             } else {
                 toast.error('Failed to save changes');
             }
@@ -187,5 +258,17 @@ export default function SheetEditorPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function SheetEditorPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen items-center justify-center">
+                <LoadingSpinner />
+            </div>
+        }>
+            <SheetEditorContent />
+        </Suspense>
     );
 }

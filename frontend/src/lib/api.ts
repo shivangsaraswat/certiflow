@@ -185,3 +185,68 @@ export function getViewUrl(type: string, filename: string, thumbnail?: boolean):
     const url = `${API_BASE_URL}/files/view/${type}/${filename}`;
     return thumbnail ? `${url}?thumbnail=true` : url;
 }
+
+// =============================================================================
+// Groups API
+// =============================================================================
+
+import type { Group, GroupCertificate } from '@/types';
+
+export async function getGroups(): Promise<ApiResponse<Group[]>> {
+    return fetchApi<Group[]>('/groups');
+}
+
+export async function getGroup(id: string): Promise<ApiResponse<Group>> {
+    return fetchApi<Group>(`/groups/${id}`);
+}
+
+export async function createGroup(data: { name: string; description?: string; templateId: string; sheetId?: string }): Promise<ApiResponse<Group>> {
+    return fetchApi<Group>('/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateGroup(id: string, data: { name?: string; description?: string }): Promise<ApiResponse<{ id: string; updated: boolean }>> {
+    return fetchApi<{ id: string; updated: boolean }>(`/groups/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteGroup(id: string): Promise<ApiResponse<{ deleted: boolean }>> {
+    return fetchApi<{ deleted: boolean }>(`/groups/${id}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function getGroupCertificates(groupId: string, limit = 50, offset = 0): Promise<ApiResponse<{ certificates: GroupCertificate[]; total: number }>> {
+    return fetchApi<{ certificates: GroupCertificate[]; total: number }>(`/groups/${groupId}/certificates?limit=${limit}&offset=${offset}`);
+}
+
+export async function generateSingleInGroup(groupId: string, data: { data: Record<string, string>; recipientName?: string; recipientEmail?: string }): Promise<ApiResponse<GenerationResult>> {
+    return fetchApi<GenerationResult>(`/groups/${groupId}/generate/single`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+}
+
+export async function generateBulkInGroup(groupId: string, formData: FormData): Promise<ApiResponse<{ jobId: string; message: string }>> {
+    return fetchApi<{ jobId: string; message: string }>(`/groups/${groupId}/generate/bulk`, {
+        method: 'POST',
+        body: formData,
+    });
+}
+
+export async function deleteCertificate(id: string): Promise<ApiResponse<{ message: string }>> {
+    return fetchApi<{ message: string }>(`/certificates/${id}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function getBulkJobStatus(jobId: string): Promise<ApiResponse<BulkGenerationResult>> {
+    return fetchApi<BulkGenerationResult>(`/generate/bulk/status/${jobId}`);
+}

@@ -1,8 +1,19 @@
+'use client';
+
 /**
  * New Template Upload Page
  */
 
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { TemplateUploadForm } from '@/components/templates/template-form';
+
+function NewTemplateContent() {
+    const searchParams = useSearchParams();
+    const returnTo = searchParams.get('returnTo') || undefined;
+
+    return <TemplateUploadForm returnTo={returnTo} />;
+}
 
 export default function NewTemplatePage() {
     return (
@@ -14,7 +25,9 @@ export default function NewTemplatePage() {
                 </p>
             </div>
 
-            <TemplateUploadForm />
+            <Suspense fallback={<div>Loading form...</div>}>
+                <NewTemplateContent />
+            </Suspense>
         </div>
     );
 }

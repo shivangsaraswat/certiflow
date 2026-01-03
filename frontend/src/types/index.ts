@@ -9,6 +9,7 @@
 
 export interface Template {
     id: string;
+    code: string;                      // 1-5 char unique template code (e.g., "NAMD25")
     name: string;
     description?: string;
     filename: string;
@@ -87,6 +88,7 @@ export interface GenerationResult {
 
 export interface BulkGenerationResult {
     jobId: string;
+    status: 'processing' | 'completed' | 'failed';
     totalRequested: number;
     successful: number;
     failed: number;
@@ -97,6 +99,41 @@ export interface BulkGenerationResult {
 export interface BulkError {
     row: number;
     message: string;
+}
+
+// =============================================================================
+// Group Types
+// =============================================================================
+
+export interface Group {
+    id: string;
+    name: string;
+    description?: string;
+    templateId: string;
+    sheetId?: string | null;
+    sheet?: {
+        id: string;
+        name: string;
+    };
+    template?: {
+        id: string;
+        name: string;
+        code: string;
+    };
+    certificateCount?: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface GroupCertificate {
+    id: string;
+    certificateCode: string;
+    recipientName: string;
+    recipientEmail?: string;
+    filename: string;
+    fileUrl?: string;
+    generationMode: 'single' | 'bulk';
+    createdAt: string;
 }
 
 // =============================================================================
