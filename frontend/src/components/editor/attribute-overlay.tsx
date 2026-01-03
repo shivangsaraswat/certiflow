@@ -31,50 +31,70 @@ export function AttributeOverlay({
 }: AttributeOverlayProps) {
     const elementRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-    // Convert PDF coordinates to screen coordinates
-    // PDF: origin at bottom-left, Y increases upward
-    // Screen: origin at top-left, Y increases downward
-    const screenX = attribute.x * scale;
-    const screenY = (pdfHeight - attribute.y) * scale;
+    // Use Refs for drag state to avoid re-render loops and stale closures in event listeners
+    const dragStartRef = useRef({ x: 0, y: 0 });
+    const initialPosRef = useRef({ x: 0, y: 0 });
+    const currentPosRef = useRef({ x: attribute.x, y: attribute.y });
+
+    // Local position state for UI updates
+    const [localPos, setLocalPos] = useState({ x: attribute.x, y: attribute.y });
+
+    // Sync local state with props when NOT dragging
+    useEffect(() => {
+        if (!isDragging) {
+            setLocalPos({ x: attribute.x, y: attribute.y });
+            currentPosRef.current = { x: attribute.x, y: attribute.y };
+        }
+    }, [attribute.x, attribute.y, isDragging]);
+
+    // Calculate screen coordinates
+    const screenX = localPos.x * scale;
+    const screenY = (pdfHeight - localPos.y) * scale;
 
     const handleMouseDown = useCallback(
         (e: React.MouseEvent) => {
             e.stopPropagation();
             onSelect();
 
-            if (!elementRef.current) return;
-
-            const rect = elementRef.current.getBoundingClientRect();
-            setDragOffset({
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top,
-            });
+            // Initialize drag state in Refs
             setIsDragging(true);
+            dragStartRef.current = { x: e.clientX, y: e.clientY };
+            initialPosRef.current = { x: localPos.x, y: localPos.y };
+            currentPosRef.current = { x: localPos.x, y: localPos.y };
         },
-        [onSelect]
+        [onSelect, localPos]
     );
 
     useEffect(() => {
         if (!isDragging) return;
 
         const handleMouseMove = (e: MouseEvent) => {
-            if (!elementRef.current?.parentElement) return;
+            const startMouse = dragStartRef.current;
+            const startPos = initialPosRef.current;
 
-            const parentRect = elementRef.current.parentElement.getBoundingClientRect();
-            const newScreenX = e.clientX - parentRect.left - dragOffset.x;
-            const newScreenY = e.clientY - parentRect.top - dragOffset.y;
+            // Calculate delta
+            const dx = e.clientX - startMouse.x;
+            const dy = e.clientY - startMouse.y;
 
-            // Convert screen coordinates to PDF coordinates
-            const pdfX = newScreenX / scale;
-            const pdfY = pdfHeight - newScreenY / scale;
+            // Convert to PDF units
+            const dPdfX = dx / scale;
+            const dPdfY = -dy / scale;
 
-            onPositionChange(Math.max(0, pdfX), Math.max(0, pdfY));
+            const newX = Math.max(0, startPos.x + dPdfX);
+            const newY = Math.max(0, startPos.y + dPdfY);
+
+            // Update local state (triggers re-render)
+            setLocalPos({ x: newX, y: newY });
+
+            // Update ref (for mouseUp to read)
+            currentPosRef.current = { x: newX, y: newY };
         };
 
         const handleMouseUp = () => {
             setIsDragging(false);
+            // Commit final position from Ref
+            onPositionChange(currentPosRef.current.x, currentPosRef.current.y);
         };
 
         document.addEventListener('mousemove', handleMouseMove);
@@ -84,37 +104,22 @@ export function AttributeOverlay({
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, dragOffset, scale, pdfHeight, onPositionChange]);
-
-    const handleDeleteClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onDelete();
-    };
-
-    // Calculate text alignment offset for display
-    let alignOffset = 0;
-    if (attribute.align === 'center') {
-        alignOffset = 50; // Move left by 50% of width
-    } else if (attribute.align === 'right') {
-        alignOffset = 100; // Move left by 100% of width
-    }
+    }, [isDragging, scale, onPositionChange]); // Dependencies are now stable
 
     return (
         <div
             ref={elementRef}
             className={cn(
-                'pointer-events-auto absolute flex cursor-move items-center gap-1 rounded border-2 px-2 py-1 transition-colors',
-                isSelected
-                    ? 'border-primary bg-primary/20 shadow-lg'
-                    : 'border-dashed border-blue-500 bg-blue-500/10 hover:bg-blue-500/20',
-                isDragging && 'opacity-80'
+                'absolute group flex flex-col pointer-events-auto',
+                'touch-none select-none transition-shadow',
+                isSelected ? 'z-50' : 'z-10 hover:z-40',
+                isDragging ? 'cursor-grabbing' : 'cursor-grab'
             )}
             style={{
                 left: screenX,
                 top: screenY,
-                transform: `translateX(-${alignOffset}%) translateY(-100%)`,
-                fontSize: Math.max(10, attribute.fontSize * scale * 0.5),
-                color: attribute.color,
+                transform: `translateX(-${attribute.align === 'center' ? 50 : attribute.align === 'right' ? 100 : 0}%) translateY(-100%)`,
+                minWidth: 'min-content',
             }}
             onMouseDown={handleMouseDown}
             onClick={(e) => {
@@ -122,17 +127,59 @@ export function AttributeOverlay({
                 onSelect();
             }}
         >
-            <GripVertical className="h-3 w-3 text-muted-foreground" />
-            <span className="select-none whitespace-nowrap font-medium">
-                {attribute.placeholder}
-            </span>
-            {isSelected && (
-                <button
-                    onClick={handleDeleteClick}
-                    className="ml-1 rounded-full p-0.5 hover:bg-destructive hover:text-destructive-foreground"
+            {/* Content Container */}
+            <div className={cn(
+                "relative flex flex-col min-w-[100px]",
+                "transition-all duration-200",
+                isSelected
+                    ? "ring-1 ring-primary shadow-lg bg-background/95 rounded-md"
+                    : "ring-1 ring-transparent hover:ring-border hover:bg-background/80 hover:shadow-sm rounded-sm"
+            )}>
+
+                {/* Header - Only visible when selected or hovering */}
+                <div className={cn(
+                    "flex items-center justify-between px-2 py-1 text-[10px] font-medium tracking-wide border-b transition-opacity",
+                    isSelected ? "opacity-100 border-primary/20 bg-primary/5 text-primary" : "opacity-0 group-hover:opacity-100 border-border bg-muted/50 text-muted-foreground",
+                    isDragging && "opacity-100" // Keep visible dragging
+                )}>
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                        <GripVertical className="h-3 w-3 shrink-0 opacity-50" />
+                        <span className="truncate max-w-[80px]">{attribute.name}</span>
+                    </div>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete();
+                        }}
+                        className="ml-1 rounded-sm p-0.5 hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                    >
+                        <X className="h-3 w-3" />
+                    </button>
+                </div>
+
+                {/* Main Value Preview */}
+                <div
+                    className={cn(
+                        "px-3 py-1.5 whitespace-nowrap text-center font-mono text-sm",
+                        !isSelected && !isDragging && "bg-black/5 rounded-sm" // Subtle background when just sitting there
+                    )}
+                    style={{
+                        fontSize: Math.max(10, attribute.fontSize * scale),
+                        color: attribute.color,
+                        fontFamily: attribute.fontFamily,
+                        fontWeight: attribute.fontWeight,
+                    }}
                 >
-                    <X className="h-3 w-3" />
-                </button>
+                    {attribute.placeholder}
+                </div>
+            </div>
+
+            {/* Helper Lines (visual sugar) */}
+            {isSelected && (
+                <>
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full h-2 w-px bg-primary/50" />
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full h-2 w-px bg-primary/50" />
+                </>
             )}
         </div>
     );

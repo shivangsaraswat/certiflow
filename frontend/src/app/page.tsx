@@ -1,105 +1,138 @@
 import Link from 'next/link';
-import { FileImage, FileOutput, Files, ArrowRight } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Clock,
+  Briefcase,
+  TrendingUp,
+  MousePointerClick,
+  PlayCircle,
+  BarChart3,
+  Share2,
+  ExternalLink
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-8">
-      {/* Welcome Section */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Welcome to CertifGen</h1>
-        <p className="text-muted-foreground">
-          Generate professional certificates with ease. Upload templates, customize attributes, and generate high-quality PDFs.
-        </p>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Generate Certificate */}
-        <Card className="group relative overflow-hidden border-2 transition-all hover:border-primary hover:shadow-lg">
-          <CardHeader>
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-              <FileOutput className="h-6 w-6" />
-            </div>
-            <CardTitle>Generate Certificate</CardTitle>
-            <CardDescription>
-              Create a single certificate with custom details
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/generate">
-              <Button className="group/btn w-full">
-                Get Started
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-        {/* Bulk Generate */}
-        <Card className="group relative overflow-hidden border-2 transition-all hover:border-primary hover:shadow-lg">
-          <CardHeader>
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 transition-colors group-hover:bg-blue-500 group-hover:text-white">
-              <Files className="h-6 w-6" />
-            </div>
-            <CardTitle>Bulk Generate</CardTitle>
-            <CardDescription>
-              Upload a CSV and generate certificates in batch
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="flex flex-col gap-8 rounded-xl bg-card p-8 shadow-sm md:flex-row md:items-center md:justify-between border">
+        <div className="max-w-2xl space-y-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">New</Badge>
+            <span className="text-sm text-muted-foreground">Included in your plan</span>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Meet Automations: CertifGen's way to put your credentialing on autopilot
+          </h1>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Connect CertifGen to your favorite tools to automate issuance
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Save hundreds of hours by turning manual credentialing into fully automated process
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              No code, no complexity, and no additional fees
+            </li>
+          </ul>
+          <div className="flex items-center gap-3 pt-2">
             <Link href="/generate/bulk">
-              <Button variant="outline" className="group/btn w-full">
-                Upload CSV
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-              </Button>
+              <Button>Create Automation</Button>
             </Link>
-          </CardContent>
-        </Card>
+            <Button variant="outline" className="gap-2">
+              <PlayCircle className="h-4 w-4" />
+              Watch Demo
+            </Button>
+          </div>
+        </div>
 
-        {/* Manage Templates */}
-        <Card className="group relative overflow-hidden border-2 transition-all hover:border-primary hover:shadow-lg">
-          <CardHeader>
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/10 text-green-500 transition-colors group-hover:bg-green-500 group-hover:text-white">
-              <FileImage className="h-6 w-6" />
+        {/* Hero Visual Placeholder */}
+        <div className="hidden flex-1 justify-end md:flex">
+          <div className="relative h-64 w-80 rounded-lg bg-secondary/50 p-6 border border-dashed border-border/60">
+            <div className="absolute right-[-20px] top-[40px] rounded-lg bg-card p-4 shadow-lg border">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">C</div>
+                <div>
+                  <p className="text-xs font-bold">CertifGen</p>
+                  <p className="text-[10px] text-muted-foreground">Issue Credential</p>
+                </div>
+              </div>
             </div>
-            <CardTitle>Manage Templates</CardTitle>
-            <CardDescription>
-              Upload and configure certificate templates
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/templates">
-              <Button variant="outline" className="group/btn w-full">
-                View Templates
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
-      {/* Features Section */}
-      <div className="mt-12">
-        <h2 className="mb-6 text-2xl font-semibold">Features</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            { title: 'High Quality', desc: '300 DPI PDF output' },
-            { title: 'Customizable', desc: 'Flexible attribute positioning' },
-            { title: 'Bulk Processing', desc: 'Generate thousands at once' },
-            { title: 'Easy to Use', desc: 'Simple, intuitive interface' },
-          ].map((feature, i) => (
-            <Card key={i} className="text-center">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{feature.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{feature.desc}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      {/* Stats Grid */}
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Saving Time', value: '6 hours', sub: 'Average time saved per week', icon: Clock, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+          { label: 'Looking Professional', value: '94% issuers', sub: 'Feel more professional with certificates', icon: Briefcase, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+          { label: 'Brand Awareness', value: '2.42 views', sub: 'Average views per share', icon: TrendingUp, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+          { label: 'Generating Leads', value: '0.31 clicks', sub: 'Clicks generated by shared credentials', icon: MousePointerClick, color: 'text-green-500', bg: 'bg-green-500/10' },
+        ].map((stat, i) => (
+          <Card key={i} className="shadow-sm border">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <div className={`rounded-md p-2 ${stat.bg} ${stat.color}`}>
+                <stat.icon className="h-4 w-4" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xs font-medium text-muted-foreground mb-1">{stat.label}</div>
+              <div className="text-2xl font-bold">{stat.value}</div>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                {stat.sub}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Analytics & Links */}
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* Chart 1 */}
+        <Card className="col-span-2 shadow-sm border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base font-semibold">Credentials Delivery Summary</CardTitle>
+              <Share2 className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </CardHeader>
+          <CardContent className="flex h-[300px] flex-col items-center justify-center text-center">
+            <div className="mb-4 rounded-full bg-secondary p-4">
+              <BarChart3 className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium">No analytics available yet</p>
+            <p className="max-w-[15rem] text-xs text-muted-foreground">
+              Credentials delivery summary analytics will be available once you issue your first credentials.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Useful Links */}
+        <Card className="shadow-sm border">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Useful Links</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[
+              'Go to knowledge base',
+              "CertifGen's pricing & plans",
+              '5 Strategies to Drive Traffic',
+              'Top 8 Best Certificate Principles',
+              'How to Create a Certification Program'
+            ].map((link, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm text-blue-600 hover:underline cursor-pointer">
+                <ExternalLink className="h-3 w-3" />
+                {link}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -82,3 +82,33 @@ export const bulkJobsRelations = relations(bulkJobs, ({ one, many }) => ({
     }),
     certificates: many(certificates),
 }));
+
+// =============================================================================
+// Spreadsheets (Data Vault)
+// =============================================================================
+export const spreadsheets = pgTable('spreadsheets', {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const spreadsheetData = pgTable('spreadsheet_data', {
+    id: text('id').primaryKey(),
+    spreadsheetId: text('spreadsheet_id').notNull().references(() => spreadsheets.id, { onDelete: 'cascade' }),
+    content: jsonb('content').notNull(), // FortuneSheet data
+});
+
+export const spreadsheetsRelations = relations(spreadsheets, ({ one }) => ({
+    data: one(spreadsheetData, {
+        fields: [spreadsheets.id],
+        references: [spreadsheetData.spreadsheetId],
+    }),
+}));
+
+export const spreadsheetDataRelations = relations(spreadsheetData, ({ one }) => ({
+    spreadsheet: one(spreadsheets, {
+        fields: [spreadsheetData.spreadsheetId],
+        references: [spreadsheets.id],
+    }),
+}));

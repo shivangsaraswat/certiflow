@@ -61,25 +61,18 @@ export default function TemplatesPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold">Templates</h1>
-                    <p className="text-muted-foreground">
-                        Manage your certificate templates
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" size="icon" onClick={loadTemplates}>
-                        <RefreshCw className="h-4 w-4" />
+            {/* Action Bar */}
+            <div className="flex items-center justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={loadTemplates} className="h-8">
+                    <RefreshCw className="mr-2 h-3 w-3" />
+                    Refresh
+                </Button>
+                <Link href="/templates/new">
+                    <Button size="sm" className="h-8">
+                        <Plus className="mr-2 h-3 w-3" />
+                        Upload Template
                     </Button>
-                    <Link href="/templates/new">
-                        <Button>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Upload Template
-                        </Button>
-                    </Link>
-                </div>
+                </Link>
             </div>
 
             {/* Error Display */}
@@ -91,8 +84,8 @@ export default function TemplatesPage() {
 
             {/* Templates Grid */}
             {templates.length === 0 ? (
-                <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border-2 border-dashed">
-                    <p className="mb-4 text-muted-foreground">No templates yet</p>
+                <div className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/30">
+                    <p className="mb-4 text-sm text-muted-foreground">No templates yet</p>
                     <Link href="/templates/new">
                         <Button>
                             <Plus className="mr-2 h-4 w-4" />
