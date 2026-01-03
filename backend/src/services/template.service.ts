@@ -173,7 +173,7 @@ export const addAttribute = async (templateId: string, userId: string, attribute
         .set({ attributes: updatedAttributes, updatedAt: new Date() })
         .where(eq(templates.id, templateId));
 
-    return getTemplateById(templateId);
+    return getTemplateById(templateId, userId);
 };
 
 export const updateAttribute = async (templateId: string, userId: string, attributeId: string, updates: Partial<DynamicAttribute>): Promise<Template | null> => {
@@ -191,7 +191,7 @@ export const updateAttribute = async (templateId: string, userId: string, attrib
         .set({ attributes: updatedAttributes, updatedAt: new Date() })
         .where(eq(templates.id, templateId));
 
-    return getTemplateById(templateId);
+    return getTemplateById(templateId, userId);
 };
 
 export const deleteAttribute = async (templateId: string, userId: string, attributeId: string): Promise<Template | null> => {
@@ -204,7 +204,7 @@ export const deleteAttribute = async (templateId: string, userId: string, attrib
         .set({ attributes: updatedAttributes, updatedAt: new Date() })
         .where(eq(templates.id, templateId));
 
-    return getTemplateById(templateId);
+    return getTemplateById(templateId, userId);
 };
 
 export const updateAllAttributes = async (templateId: string, userId: string, attributes: DynamicAttribute[]): Promise<Template | null> => {
@@ -215,7 +215,7 @@ export const updateAllAttributes = async (templateId: string, userId: string, at
         .set({ attributes: attributes, updatedAt: new Date() })
         .where(eq(templates.id, templateId));
 
-    return getTemplateById(templateId);
+    return getTemplateById(templateId, userId);
 };
 
 

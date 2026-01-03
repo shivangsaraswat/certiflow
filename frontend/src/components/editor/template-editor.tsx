@@ -56,6 +56,32 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
         []
     );
 
+    // Check if certificateId already exists
+    const hasCertificateId = attributes.some(a => a.id === 'certificateId');
+
+    // Add Certificate ID attribute (system attribute)
+    const handleAddCertificateId = useCallback(() => {
+        if (hasCertificateId) return; // Prevent duplicates
+
+        const certificateIdAttr: DynamicAttribute = {
+            id: 'certificateId',
+            name: 'Certificate ID',
+            placeholder: '{CertificateID}',
+            type: 'text',
+            required: true,
+            page: currentPage,
+            x: pdfDimensions.width / 2,
+            y: 50, // Near bottom of page
+            fontSize: 12,
+            fontFamily: 'Helvetica',
+            fontWeight: 'normal',
+            color: '#000000',
+            align: 'center',
+        };
+        setAttributes(prev => [...prev, certificateIdAttr]);
+        setSelectedId('certificateId');
+    }, [hasCertificateId, currentPage, pdfDimensions]);
+
     const handleAddAttribute = useCallback(() => {
         const newAttribute: DynamicAttribute = {
             id: `attr_${uuidv4().substring(0, 8)}`,
@@ -225,6 +251,17 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                     <Button onClick={handleAddAttribute} className="shadow-sm">
                         <Plus className="mr-2 h-4 w-4" />
                         Add Attribute
+                    </Button>
+                    <Button
+                        onClick={handleAddCertificateId}
+                        variant={hasCertificateId ? "outline" : "secondary"}
+                        disabled={hasCertificateId}
+                        className="shadow-sm"
+                        title={hasCertificateId ? "Certificate ID already added" : "Add Certificate ID field"}
+                    >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Certificate ID
+                        {hasCertificateId && <span className="ml-1 text-xs">(Added)</span>}
                     </Button>
                     <div className="h-8 w-px bg-border" />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">

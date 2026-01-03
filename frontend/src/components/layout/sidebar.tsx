@@ -132,12 +132,12 @@ export function Sidebar() {
                 {/* User Profile */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <div className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm hover:bg-accent cursor-pointer transition-colors">
+                        <button className="flex w-full items-center gap-3 rounded-lg border bg-card p-3 shadow-sm hover:bg-accent cursor-pointer transition-colors text-left">
                             <Avatar className="h-8 w-8 rounded-full">
                                 <AvatarImage src={user?.image || ""} />
                                 <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
                             </Avatar>
-                            <div className="flex-1 overflow-hidden text-left">
+                            <div className="flex-1 overflow-hidden">
                                 <p className="truncate text-sm font-medium">{user?.name || "User"}</p>
                                 <div className="flex items-center gap-1">
                                     <p className="truncate text-xs text-muted-foreground">{user?.email || "user@example.com"}</p>
@@ -145,7 +145,7 @@ export function Sidebar() {
                                 </div>
                             </div>
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        </div>
+                        </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                         <DropdownMenuItem onClick={() => signOut()}>

@@ -159,11 +159,25 @@ export interface EditorState {
     isDragging: boolean;
 }
 
-// Available fonts (must match backend)
+// Available fonts - expanded list matching backend FONT_MAPPING
+// Standard PDF fonts and their web equivalents
 export const AVAILABLE_FONTS = [
+    // Sans-serif fonts
     { value: 'Helvetica', label: 'Helvetica' },
+    { value: 'Inter', label: 'Inter' },
+    { value: 'Roboto', label: 'Roboto' },
+    { value: 'Montserrat', label: 'Montserrat' },
+    { value: 'Open Sans', label: 'Open Sans' },
+    { value: 'Lato', label: 'Lato' },
+    // Serif fonts
     { value: 'Times New Roman', label: 'Times New Roman' },
+    { value: 'Playfair Display', label: 'Playfair Display' },
+    { value: 'DM Serif Display', label: 'DM Serif Display' },
+    // Monospace
     { value: 'Courier', label: 'Courier' },
+    // Decorative / Script fonts
+    { value: 'Great Vibes', label: 'Great Vibes' },
+    { value: 'Dancing Script', label: 'Dancing Script' },
 ];
 
 export const FONT_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72];
@@ -173,3 +187,7 @@ export const ATTRIBUTE_TYPES = [
     { value: 'date', label: 'Date' },
     { value: 'signature', label: 'Signature' },
 ];
+
+// System attribute IDs - these are auto-injected and non-deletable
+export const SYSTEM_ATTRIBUTE_IDS = ['certificateId'];
+

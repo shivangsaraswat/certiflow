@@ -65,7 +65,7 @@ export async function processBulkGeneration(
     userId?: string
 ): Promise<string> {
     const jobId = uuidv4();
-    const template = await getTemplateById(templateId);
+    const template = await getTemplateById(templateId, userId);
 
     if (!template) {
         throw new Error('Template not found');
@@ -244,30 +244,31 @@ async function processBatch(
 
             console.log(`[Bulk] Row ${index + 1} certData:`, JSON.stringify(certData));
 
-            // Try to find email in the record (look for common email field names)
-            let recipientEmail: string | undefined;
-            const emailKeys = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'email_address', 'email address'];
-            for (const key of emailKeys) {
-                if (record[key]) {
-                    recipientEmail = record[key];
-                    break;
-                }
-            }
-            // Also check if any column was mapped to email
-            for (const [sourceCol, attrId] of Object.entries(columnMapping)) {
-                const attr = template.attributes.find(a => a.id === attrId);
-                if (attr && attr.name.toLowerCase().includes('email')) {
-                    recipientEmail = record[sourceCol] || recipientEmail;
-                    break;
-                }
+            // Column A (index 0) MUST be email - enforce data rule
+            // Get the first column from the record (keys are header names, first header is Column A)
+            const recordKeys = Object.keys(record);
+            const firstColValue = recordKeys.length > 0 ? record[recordKeys[0]] : undefined;
+            let recipientEmail: string | undefined = firstColValue;
+
+            // Validate email format
+            if (!recipientEmail || !recipientEmail.includes('@')) {
+                errors.push({
+                    row: index + 2, // +2 because 1-indexed and row 0 is header
+                    error: 'Column A must contain a valid email address'
+                });
+                failed++;
+                continue;
             }
 
             // Generate Certificate ID using template code and email
             const certId = generateCertificateCode(template.code, recipientEmail);
             const filename = `${certId}.pdf`;
 
-            // Render to Buffer (No local file save)
-            const pdfBuffer = await renderCertificate(template, certData);
+            // Inject certificateId into certData for rendering
+            certData['certificateId'] = certId;
+
+            // Render to Buffer (No local file save) - pass email for ID generation
+            const pdfBuffer = await renderCertificate(template, certData, recipientEmail);
 
             // Upload PDF to ImageKit
             const uploadPath = `generated/${filename}`;

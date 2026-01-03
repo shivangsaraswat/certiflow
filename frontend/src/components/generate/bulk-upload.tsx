@@ -29,6 +29,7 @@ import {
     getDownloadUrl,
 } from '@/lib/api';
 import type { Template, BulkGenerationResult } from '@/types';
+import { SYSTEM_ATTRIBUTE_IDS } from '@/types';
 import { toast } from 'sonner';
 
 interface Spreadsheet {
@@ -388,8 +389,13 @@ export function BulkUploadForm() {
                                 <CardDescription>Map template fields to data columns</CardDescription>
                             </CardHeader>
                             <CardContent>
+                                {/* Helper note about Column A */}
+                                <div className="mb-4 rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+                                    <strong>Note:</strong> Column A must contain Student Email ID. Email is used internally to generate unique certificate IDs and is not printed on the certificate.
+                                </div>
                                 <form id="bulk-form" onSubmit={handleSubmit} className="space-y-4">
-                                    {selectedTemplate?.attributes.map((attr) => (
+                                    {/* Filter out system attributes like certificateId */}
+                                    {selectedTemplate?.attributes.filter(attr => !SYSTEM_ATTRIBUTE_IDS.includes(attr.id)).map((attr) => (
                                         <div key={attr.id} className="flex items-center gap-3">
                                             <div className="w-1/3">
                                                 <span className="text-sm font-medium block truncate" title={attr.name}>
