@@ -24,6 +24,10 @@ export function GroupGenerateSingle({ group, onGenerated }: Props) {
 
     useEffect(() => {
         const loadTemplate = async () => {
+            if (!group.templateId) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             const res = await getTemplate(group.templateId);
             if (res.success && res.data) {

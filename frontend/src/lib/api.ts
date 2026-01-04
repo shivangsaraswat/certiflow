@@ -236,7 +236,8 @@ export async function getGroup(id: string, userId?: string): Promise<ApiResponse
     });
 }
 
-export async function createGroup(data: { name: string; description?: string; templateId: string; sheetId?: string }, userId?: string): Promise<ApiResponse<Group>> {
+// Simplified: Only name and description required
+export async function createGroup(data: { name: string; description?: string }, userId?: string): Promise<ApiResponse<Group>> {
     return fetchApi<Group>('/groups', {
         method: 'POST',
         headers: {
@@ -264,6 +265,52 @@ export async function deleteGroup(id: string, userId?: string): Promise<ApiRespo
         headers: userId ? { 'x-user-id': userId } : undefined,
     });
 }
+
+// =============================================================================
+// Group Settings APIs
+// =============================================================================
+
+export async function updateGroupTemplate(groupId: string, templateId: string | null, userId?: string): Promise<ApiResponse<{ id: string; templateId: string; updated: boolean }>> {
+    return fetchApi<{ id: string; templateId: string; updated: boolean }>(`/groups/${groupId}/settings/template`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
+        body: JSON.stringify({ templateId }),
+    });
+}
+
+export async function updateGroupDataConfig(
+    groupId: string,
+    config: { sheetId?: string | null; selectedSheetTab?: string | null; columnMapping?: Record<string, string> | null },
+    userId?: string
+): Promise<ApiResponse<{ id: string; updated: boolean }>> {
+    return fetchApi<{ id: string; updated: boolean }>(`/groups/${groupId}/settings/data`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function updateGroupEmailTemplate(
+    groupId: string,
+    config: { emailSubject?: string; emailTemplateHtml?: string },
+    userId?: string
+): Promise<ApiResponse<{ id: string; updated: boolean }>> {
+    return fetchApi<{ id: string; updated: boolean }>(`/groups/${groupId}/settings/email-template`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {})
+        },
+        body: JSON.stringify(config),
+    });
+}
+
 
 export async function getGroupCertificates(groupId: string, userId?: string, limit = 50, offset = 0): Promise<ApiResponse<{ certificates: GroupCertificate[]; total: number }>> {
     return fetchApi<{ certificates: GroupCertificate[]; total: number }>(`/groups/${groupId}/certificates?limit=${limit}&offset=${offset}`, {

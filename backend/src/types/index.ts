@@ -80,13 +80,77 @@ export interface Group {
     id: string;
     name: string;
     description?: string;
-    templateId: string;
-    sheetId?: string;
+    // Configuration - all optional for settings-first approach
+    templateId?: string | null;
+    sheetId?: string | null;
+    selectedSheetTab?: string | null;
+    columnMapping?: Record<string, string> | null; // { attrId: columnName }
+    // Email configuration
+    emailTemplateHtml?: string | null;
+    emailSubject?: string | null;
+    // Metadata
     certificateCount?: number;
     userId?: string;
     createdAt: Date;
     updatedAt: Date;
+    // Relations (populated by API)
+    template?: {
+        id: string;
+        name: string;
+        code: string;
+    } | null;
+    sheet?: {
+        id: string;
+        name: string;
+    } | null;
+    smtpConfig?: GroupSmtpConfig | null;
 }
+
+export interface GroupSmtpConfig {
+    id: string;
+    groupId: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpEmail: string;
+    smtpPassword?: string; // Only exposed for creation, masked otherwise
+    encryptionType: 'tls' | 'ssl' | 'none';
+    senderName?: string | null;
+    replyTo?: string | null;
+    isConfigured: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface MailJob {
+    id: string;
+    groupId: string;
+    totalRecipients: number;
+    sentCount: number;
+    failedCount: number;
+    pendingCount: number;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    recipientData?: Array<{
+        email: string;
+        name?: string;
+        data?: Record<string, string>;
+    }>;
+    errors?: Array<{ email: string; message: string }>;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface MailLog {
+    id: string;
+    groupId: string;
+    mailJobId?: string | null;
+    recipientEmail: string;
+    recipientName?: string | null;
+    subject: string;
+    status: 'sent' | 'failed';
+    errorMessage?: string | null;
+    sentAt: Date;
+}
+
 
 export interface Certificate {
     id: string;

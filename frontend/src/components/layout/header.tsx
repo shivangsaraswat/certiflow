@@ -15,7 +15,7 @@ import { usePageTitle } from '@/components/providers/page-title-provider';
 export function Header() {
     const pathname = usePathname();
 
-    const { title } = usePageTitle();
+    const { title, actions, backButton } = usePageTitle();
 
     // Generate breadcrumb from pathname
     const getBreadcrumb = () => {
@@ -54,11 +54,25 @@ export function Header() {
                 </SheetContent>
             </Sheet>
 
-            {/* Breadcrumb */}
-            <h1 className="text-lg font-semibold">{getBreadcrumb()}</h1>
+            {/* Title & Back Button */}
+            <div className="flex items-center gap-1">
+                {backButton && (
+                    <div className="flex items-center">
+                        {backButton}
+                    </div>
+                )}
+                <h1 className="text-lg font-semibold">{getBreadcrumb()}</h1>
+            </div>
 
             {/* Spacer */}
             <div className="flex-1" />
+
+            {/* Actions */}
+            {actions && (
+                <div className="flex items-center gap-2">
+                    {actions}
+                </div>
+            )}
         </header>
     );
 }

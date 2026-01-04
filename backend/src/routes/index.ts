@@ -11,6 +11,7 @@ import historyRoutes from './history.js';
 import spreadsheetRoutes from './spreadsheets.js';
 import groupRoutes from './groups.js';
 import certificateRoutes from './certificates.js';
+import mailRoutes from './mail.js';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.use('/history', historyRoutes);
 router.use('/spreadsheets', spreadsheetRoutes);
 router.use('/groups', groupRoutes);
 router.use('/certificates', certificateRoutes);
+router.use('/groups', mailRoutes); // Mail routes are nested under groups
 
 // Health check endpoint
 router.get('/health', (req, res) => {
