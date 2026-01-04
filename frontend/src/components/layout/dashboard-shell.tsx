@@ -24,11 +24,11 @@ export function DashboardShell({ children }: DashboardShellProps) {
 
             {/* Main Content */}
             <div className={cn(
-                "flex-1 flex flex-col transition-all duration-300 ease-in-out",
+                "flex-1 flex flex-col transition-all duration-300 ease-in-out min-w-0 max-w-full overflow-hidden",
                 isCollapsed ? "lg:ml-[72px]" : "lg:ml-64"
             )}>
                 <Header />
-                <main className="px-6 pb-6 pt-4 flex-1">
+                <main className="px-6 pb-6 pt-4 flex-1 overflow-hidden">
                     {children}
                 </main>
             </div>

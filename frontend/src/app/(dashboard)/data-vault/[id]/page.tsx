@@ -9,6 +9,8 @@ import { ArrowLeft, Save, Loader2, Cloud, CheckCircle2 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
+import { usePageTitle } from '@/components/providers/page-title-provider';
+import { useSidebar } from '@/components/providers/sidebar-provider';
 
 /**
  * Convert FortuneSheet's internal 2D `data` array format back to sparse `celldata` format.
@@ -81,16 +83,15 @@ function SheetEditorContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
-    // We'll use a ref to track if content has changed to debounce saves
     const contentRef = useRef<any>(null);
+    const { setPageTitle, setActions, setBackButton } = usePageTitle();
+    const { collapseSidebar } = useSidebar();
 
     useEffect(() => {
-        if (id && userId) {
-            loadSheet(id);
-        }
-    }, [id, userId]);
+        collapseSidebar();
+    }, [collapseSidebar]);
 
-    const loadSheet = async (sheetId: string) => {
+    const loadSheet = useCallback(async (sheetId: string) => {
         try {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/spreadsheets/${sheetId}`, {
@@ -99,23 +100,11 @@ function SheetEditorContent() {
             const data = await res.json();
 
             if (data.success) {
-                // Normalize content to ensure celldata format for FortuneSheet initialization
-                // This handles the case where saved data is in 2D `data` format from onChange
                 const content = normalizeSheetData(data.data.content);
-
-                console.log('[Spreadsheet Load] Normalized content:',
-                    content.map((s: any) => ({
-                        name: s.name,
-                        celldataLength: s.celldata?.length || 0,
-                        hasData: !!s.data
-                    }))
-                );
-
                 setSheet({
                     ...data.data,
                     content
                 });
-                // Initialize ref with loaded content
                 contentRef.current = content;
                 setLastSaved(new Date(data.data.updatedAt));
             } else {
@@ -128,23 +117,24 @@ function SheetEditorContent() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [userId, router]);
 
-    const handleSave = async () => {
+    useEffect(() => {
+        if (id && userId) {
+            loadSheet(id);
+        }
+    }, [id, userId, loadSheet]);
+
+    const handleSave = useCallback(async () => {
         if (isSaving) return;
         setIsSaving(true);
 
         try {
-            // Get latest content from ref
             const dataToSave = contentRef.current;
-
             if (!dataToSave) {
-                console.warn("No content to save");
                 setIsSaving(false);
                 return;
             }
-
-            console.log("Saving spreadsheet content:", JSON.stringify(dataToSave).substring(0, 200) + "...");
 
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/spreadsheets/${id}`, {
@@ -161,8 +151,6 @@ function SheetEditorContent() {
             if (res.ok) {
                 setLastSaved(new Date());
                 toast.success('Saved successfully');
-
-                // If we have a return URL, redirect after save
                 if (returnTo) {
                     const returnUrl = wizardStep ? `${returnTo}?wizardStep=${wizardStep}` : returnTo;
                     router.push(returnUrl);
@@ -176,18 +164,55 @@ function SheetEditorContent() {
         } finally {
             setIsSaving(false);
         }
-    };
+    }, [id, userId, returnTo, router, isSaving, wizardStep]);
 
     const handleChange = useCallback((data: any) => {
-        // Update ref with new data on every change
         contentRef.current = data;
-        // Optional: Trigger auto-save debounce here if needed
     }, []);
 
-    // Manual save button handler
-    const onManualSave = () => {
-        handleSave();
-    };
+    useEffect(() => {
+        if (sheet) {
+            setPageTitle(sheet.name);
+            setBackButton(
+                <Button variant="ghost" size="icon" onClick={() => router.push('/data-vault')}>
+                    <ArrowLeft className="h-5 w-5" />
+                </Button>
+            );
+            setActions(
+                <div className="flex items-center gap-2 sm:gap-4">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                <span className="hidden sm:inline">Saving...</span>
+                            </>
+                        ) : lastSaved ? (
+                            <>
+                                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                <span className="hidden md:inline">{`Saved ${lastSaved.toLocaleTimeString()}`}</span>
+                                <span className="hidden sm:inline md:hidden">Saved</span>
+                            </>
+                        ) : (
+                            <>
+                                <Cloud className="h-3 w-3" />
+                                <span className="hidden sm:inline">Unsaved</span>
+                            </>
+                        )}
+                    </div>
+                    <Button size="sm" onClick={handleSave} disabled={isSaving} className="gap-2 h-8 sm:h-9">
+                        <Save className="h-4 w-4" />
+                        <span className="hidden sm:inline">Save</span>
+                    </Button>
+                </div>
+            );
+        }
+
+        return () => {
+            setPageTitle(null);
+            setActions(null);
+            setBackButton(null);
+        };
+    }, [sheet, isSaving, lastSaved, handleSave, setPageTitle, setActions, setBackButton, router]);
 
     if (isLoading) {
         return (
@@ -200,60 +225,11 @@ function SheetEditorContent() {
     if (!sheet) return null;
 
     return (
-        <div className="flex h-screen flex-col bg-background">
-            {/* Header */}
-            <header className="flex h-14 items-center justify-between border-b px-4 bg-card z-50">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={() => router.push('/data-vault')}>
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div className="flex flex-col">
-                        <input
-                            className="bg-transparent text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-primary/20 rounded px-1"
-                            defaultValue={sheet.name}
-                            onBlur={(e) => {
-                                if (e.target.value !== sheet.name) {
-                                    // Update name
-                                    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-                                    fetch(`${baseUrl}/api/spreadsheets/${id}`, {
-                                        method: 'PUT',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'x-user-id': userId || ''
-                                        },
-                                        body: JSON.stringify({ name: e.target.value }),
-                                    });
-                                }
-                            }}
-                        />
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                            {isSaving ? (
-                                <>
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                    Saving...
-                                </>
-                            ) : (
-                                <>
-                                    <Cloud className="h-3 w-3" />
-                                    {lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : 'Unsaved'}
-                                </>
-                            )}
-                        </span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={onManualSave} disabled={isSaving}>
-                        <Save className="mr-2 h-4 w-4" />
-                        Save
-                    </Button>
-                </div>
-            </header>
-
-            {/* Editor Container */}
+        <div className="flex h-[calc(100vh-theme(spacing.16))] flex-col bg-background -mx-6 -mb-6 -mt-4">
             <div className="flex-1 overflow-hidden relative">
                 {sheet?.content ? (
                     <Workbook
-                        key={`workbook-${sheet?.updatedAt || 'initial'}`}
+                        key={`workbook-${id}`}
                         data={sheet.content}
                         onChange={handleChange}
                         showToolbar={true}

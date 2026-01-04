@@ -83,10 +83,16 @@ export default function GroupLayout({
     // Set page title and actions from layout
     useEffect(() => {
         if (group) {
-            setPageTitle(group.name);
+            let pageTitle = group.name;
+            if (isSettingsPage) pageTitle = `${group.name} / Settings`;
+            if (isMailPage) pageTitle = `${group.name} / Mail Center`;
+
+            setPageTitle(pageTitle);
+
+            const backPath = isMainPage ? '/groups' : `/groups/${groupId}`;
             setBackButton(
                 <Button variant="ghost" size="icon" asChild>
-                    <Link href="/groups">
+                    <Link href={backPath}>
                         <ArrowLeft className="h-5 w-5" />
                     </Link>
                 </Button>

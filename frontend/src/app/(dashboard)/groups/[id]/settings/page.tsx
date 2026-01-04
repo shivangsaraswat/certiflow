@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { getGroup, getTemplates, updateGroupTemplate, updateGroupDataConfig, updateGroupEmailTemplate } from '@/lib/api';
+import { getGroup, getTemplates, updateGroupTemplate, updateGroupDataConfig, updateGroupEmailTemplate, updateGroup } from '@/lib/api';
 import type { Group, Template, DynamicAttribute } from '@/types';
 import { toast } from 'sonner';
 import { useSidebar } from '@/components/providers/sidebar-provider';
@@ -65,6 +65,11 @@ export default function GroupSettingsPage() {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // General state
+    const [groupName, setGroupName] = useState('');
+    const [groupDescription, setGroupDescription] = useState('');
+    const [isSavingGeneral, setIsSavingGeneral] = useState(false);
 
     // Selected template state
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -145,6 +150,8 @@ export default function GroupSettingsPage() {
             if (groupRes.success && groupRes.data) {
                 const gData = groupRes.data;
                 setGroup(gData);
+                setGroupName(gData.name || '');
+                setGroupDescription(gData.description || '');
                 setSelectedTemplateId(gData.templateId || '');
                 setSelectedSheetId(gData.sheetId || '');
                 setColumnMapping(gData.columnMapping || {});
@@ -166,8 +173,9 @@ export default function GroupSettingsPage() {
 
             if (templatesRes.success && templatesRes.data) {
                 setTemplates(templatesRes.data);
-                if (groupRes.data?.templateId) {
-                    const tpl = templatesRes.data.find((t: Template) => t.id === groupRes.data.templateId);
+                if (groupRes.success && groupRes.data?.templateId) {
+                    const tData = groupRes.data;
+                    const tpl = templatesRes.data.find((t: Template) => t.id === tData.templateId);
                     setSelectedTemplate(tpl || null);
                 }
             }
@@ -263,6 +271,21 @@ export default function GroupSettingsPage() {
         setSelectedTemplate(tpl || null);
     }, [selectedTemplateId, templates]);
 
+    const handleSaveGeneral = async () => {
+        if (!groupName) return;
+        setIsSavingGeneral(true);
+        const result = await updateGroup(groupId, {
+            name: groupName,
+            description: groupDescription
+        }, userId);
+        if (result.success) {
+            toast.success('General settings updated');
+            await loadData();
+        } else {
+            toast.error('Failed to update general settings');
+        }
+        setIsSavingGeneral(false);
+    };
 
     const handleSaveTemplate = async () => {
         if (!selectedTemplateId) return;
@@ -397,8 +420,7 @@ export default function GroupSettingsPage() {
             {/* Internal Sidebar */}
             <aside className="w-64 border-r bg-muted/10 p-4">
                 <div className="mb-6 px-2">
-                    <h2 className="text-lg font-semibold tracking-tight">{group.name}</h2>
-                    <p className="text-xs text-muted-foreground truncate" title={group.id}>ID: {group.id}</p>
+                    <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
                 </div>
                 <nav className="space-y-1">
                     {navItems.map((item) => (
@@ -440,22 +462,49 @@ export default function GroupSettingsPage() {
 
                     {/* GENERAL SECTION */}
                     {activeSection === 'general' && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Group Details</CardTitle>
-                                <CardDescription>Basic information about your group.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Group Name</Label>
-                                    <Input value={group.name} disabled />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Created At</Label>
-                                    <Input value={new Date(group.createdAt).toLocaleDateString()} disabled />
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <div className="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Group Details</CardTitle>
+                                    <CardDescription>Update your group's name and description.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="groupName">Group Name</Label>
+                                        <Input
+                                            id="groupName"
+                                            value={groupName}
+                                            onChange={(e) => setGroupName(e.target.value)}
+                                            placeholder="Enter group name"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="groupDescription">Description</Label>
+                                        <Textarea
+                                            id="groupDescription"
+                                            value={groupDescription}
+                                            onChange={(e) => setGroupDescription(e.target.value)}
+                                            placeholder="Enter group description"
+                                            className="min-h-[100px]"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Created At</Label>
+                                        <Input
+                                            value={group.createdAt ? new Date(group.createdAt).toLocaleDateString() : ''}
+                                            disabled
+                                            className="bg-muted text-muted-foreground"
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                            <div className="flex justify-end">
+                                <Button onClick={handleSaveGeneral} disabled={!groupName || isSavingGeneral}>
+                                    {isSavingGeneral && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </div>
                     )}
 
                     {/* TEMPLATE SECTION */}
@@ -696,10 +745,10 @@ export default function GroupSettingsPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm text-muted-foreground">Variables:</span>
                                         {['Name', 'Email', 'CertificateID'].map(v => (
-                                            <Button key={v} variant="secondary" size="xs" className="h-6 text-xs" onClick={() => insertVariable(v)}>{`{${v}}`}</Button>
+                                            <Button key={v} variant="secondary" size="sm" className="h-6 text-xs px-2" onClick={() => insertVariable(v)}>{`{${v}}`}</Button>
                                         ))}
                                         {selectedTemplate?.attributes.filter(a => a.id !== 'certificateId').map(attr => (
-                                            <Button key={attr.id} variant="secondary" size="xs" className="h-6 text-xs" onClick={() => insertVariable(attr.name)}>{`{${attr.name}}`}</Button>
+                                            <Button key={attr.id} variant="secondary" size="sm" className="h-6 text-xs px-2" onClick={() => insertVariable(attr.name)}>{`{${attr.name}}`}</Button>
                                         ))}
                                     </div>
 

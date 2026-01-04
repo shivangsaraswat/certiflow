@@ -161,3 +161,25 @@
 .font-dancing-script {
   font-family: var(--font-dancing-script), cursive;
 }
+
+/* FortuneSheet Responsiveness Overrides */
+.fortune-workbook {
+  width: 100% !important;
+  max-width: 100vw !important;
+}
+
+.fortune-toolbar {
+  flex-wrap: wrap !important;
+  height: auto !important;
+  min-height: 40px !important;
+  padding: 4px 8px !important;
+}
+
+.fortune-toolbar-item {
+  margin-bottom: 2px !important;
+}
+
+.fortune-sheet-tab-container {
+  max-width: 100vw !important;
+  overflow-x: auto !important;
+}
