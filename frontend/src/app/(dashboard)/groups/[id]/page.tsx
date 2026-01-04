@@ -184,7 +184,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         const storedMapping = group.columnMapping as Record<string, string>;
 
         if (!storedMapping || Object.keys(storedMapping).length === 0) {
-            toast.error('Please configure Data Vault settings first');
+            toast.error('Please configure Dataset settings first');
             return;
         }
 
@@ -383,7 +383,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setIsBulkDialogOpen(true)}>
                                         <Users className="mr-2 h-4 w-4" />
-                                        Bulk from Data Vault
+                                        Bulk from Dataset
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -509,7 +509,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                     <DialogHeader>
                         <DialogTitle>Bulk Generate Certificates</DialogTitle>
                         <DialogDescription>
-                            Generate certificates using the connected Data Vault
+                            Generate certificates using the connected Dataset
                         </DialogDescription>
                     </DialogHeader>
 
@@ -552,7 +552,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                                             <AlertCircle className="h-10 w-10 text-orange-500 mx-auto mb-3" />
                                             <h4 className="font-medium text-orange-900">Configuration Required</h4>
                                             <p className="text-sm text-orange-700 mt-1">
-                                                Please configure the Data Vault and map columns in the Settings tab before running bulk generation.
+                                                Please configure the Dataset and map columns in the Settings tab before running bulk generation.
                                             </p>
                                         </div>
                                     </div>

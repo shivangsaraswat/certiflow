@@ -76,7 +76,7 @@ export default function GroupSettingsPage() {
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
-    // Data vault state
+    // Dataset state
     const [selectedSheetId, setSelectedSheetId] = useState<string>('');
     const [isSavingData, setIsSavingData] = useState(false);
     const [sheetColumns, setSheetColumns] = useState<string[]>([]);
@@ -309,7 +309,7 @@ export default function GroupSettingsPage() {
             columnMapping: columnMapping,
         }, userId);
         if (result.success) {
-            toast.success('Data vault configuration saved');
+            toast.success('Dataset configuration saved');
             await loadData();
         } else {
             toast.error('Failed to save data configuration');
@@ -400,7 +400,7 @@ export default function GroupSettingsPage() {
     const navItems = [
         { id: 'general', label: 'General', icon: Settings },
         { id: 'template', label: 'Certificate Template', icon: FileText },
-        { id: 'datavault', label: 'Data Vault', icon: Database },
+        { id: 'datavault', label: 'Dataset', icon: Database },
         { id: 'smtp', label: 'SMTP Configuration', icon: Server },
         { id: 'email', label: 'Email Template', icon: Mail },
     ];

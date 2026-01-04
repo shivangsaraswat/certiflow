@@ -3,7 +3,7 @@ import { useSession } from 'next-auth/react';
 
 /**
  * Bulk Upload Form
- * CSV upload or Data Vault selection with dynamic column mapping
+ * CSV upload or Dataset selection with dynamic column mapping
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -324,7 +324,7 @@ export function BulkUploadForm() {
                             >
                                 <TabsList className="grid w-full grid-cols-2 mb-4">
                                     <TabsTrigger value="csv">CSV Upload</TabsTrigger>
-                                    <TabsTrigger value="vault">Data Vault</TabsTrigger>
+                                    <TabsTrigger value="vault">Dataset</TabsTrigger>
                                 </TabsList>
 
                                 <TabsContent value="csv" className="space-y-4">
@@ -345,7 +345,7 @@ export function BulkUploadForm() {
                                         <Label className="mb-2 block">Select Spreadsheet</Label>
                                         {spreadsheets.length === 0 ? (
                                             <div className="text-sm text-muted-foreground py-2">
-                                                No spreadsheets found. Go to Data Vault to create one.
+                                                No spreadsheets found. Go to Dataset to create one.
                                             </div>
                                         ) : (
                                             <Select

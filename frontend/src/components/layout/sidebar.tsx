@@ -48,7 +48,7 @@ export function Sidebar() {
         { title: 'Templates', href: '/templates', icon: FileImage },
         { title: 'Generate', href: '/generate', icon: FileOutput },
         { title: 'Signatures', href: '/signatures', icon: PenTool },
-        { title: 'Data Vault', href: '/data-vault', icon: Database },
+        { title: 'Dataset', href: '/data-vault', icon: Database },
     ];
 
     const toggleTheme = () => {

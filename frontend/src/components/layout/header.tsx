@@ -25,10 +25,16 @@ export function Header() {
         if (title) {
             let prefix = 'Dashboard';
             if (root === 'groups') prefix = 'Groups';
-            else if (root === 'data-vault') prefix = 'Data vault';
+            else if (root === 'data-vault') prefix = 'Dataset';
             else if (root === 'templates') prefix = 'Templates';
             else if (root === 'signatures') prefix = 'Signatures';
             else if (root === 'admin') prefix = 'Admin';
+
+            // If we are on the main section page (one segment) and the title matches the prefix,
+            // just show the prefix to avoid "Dataset / Dataset" or "Dashboard / Dataset"
+            if (segments.length === 1 && (title === prefix || prefix === 'Dashboard')) {
+                return title;
+            }
 
             return (
                 <div className="flex items-center truncate">
@@ -48,6 +54,7 @@ export function Header() {
                 if (segments[index - 1] === 'templates') return 'Editor';
                 return 'Item';
             }
+            if (segment === 'dataset') return 'Dataset';
             return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ');
         }).join(' / ');
     };

@@ -289,9 +289,9 @@ export default function GroupMailPage() {
                                     <Badge variant="outline">✗ Email template missing</Badge>
                                 )}
                                 {hasDataVault ? (
-                                    <Badge variant="secondary" className="bg-green-100 text-green-800">✓ Data Vault</Badge>
+                                    <Badge variant="secondary" className="bg-green-100 text-green-800">✓ Dataset</Badge>
                                 ) : (
-                                    <Badge variant="outline">✗ Data vault not connected</Badge>
+                                    <Badge variant="outline">✗ Dataset not connected</Badge>
                                 )}
                                 {hasColumnMapping ? (
                                     <Badge variant="secondary" className="bg-green-100 text-green-800">✓ Email Column</Badge>

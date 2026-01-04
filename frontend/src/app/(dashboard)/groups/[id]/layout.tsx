@@ -154,7 +154,7 @@ export default function GroupLayout({
                                     className="cursor-pointer"
                                 >
                                     <Users className="mr-2 h-4 w-4" />
-                                    Bulk from Data Vault
+                                    Bulk from Dataset
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
