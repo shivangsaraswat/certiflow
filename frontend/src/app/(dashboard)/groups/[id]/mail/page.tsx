@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
     Mail, Send, CheckCircle2, XCircle, Clock, Users, AlertCircle,
-    RefreshCw, ChevronDown, ChevronUp, Settings, History
+    RefreshCw, ChevronDown, ChevronUp, Settings, History, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getGroup } from '@/lib/api';
@@ -87,6 +97,8 @@ export default function GroupMailPage() {
     const [mailHistory, setMailHistory] = useState<MailLogEntry[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [historyTotal, setHistoryTotal] = useState(0);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [logToDelete, setLogToDelete] = useState<string | null>(null);
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -134,6 +146,32 @@ export default function GroupMailPage() {
         }
         setLoadingHistory(false);
     }, [userId, groupId, baseUrl]);
+
+    const handleDeleteLog = async () => {
+        if (!logToDelete || !userId || !groupId) return;
+
+        setIsDeleting(true);
+        try {
+            const res = await fetch(`${baseUrl}/api/groups/${groupId}/mail/history/${logToDelete}`, {
+                method: 'DELETE',
+                headers: { 'x-user-id': userId }
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                toast.success('Log entry deleted');
+                setMailHistory(prev => prev.filter(log => log.id !== logToDelete));
+                setHistoryTotal(prev => prev - 1);
+            } else {
+                toast.error(data.error || 'Failed to delete log entry');
+            }
+        } catch (error) {
+            toast.error('Failed to delete log entry');
+        } finally {
+            setIsDeleting(false);
+            setLogToDelete(null);
+        }
+    };
 
     useEffect(() => {
         loadGroup();
@@ -450,6 +488,7 @@ export default function GroupMailPage() {
                                                     <TableHead>Recipient</TableHead>
                                                     <TableHead>Subject</TableHead>
                                                     <TableHead>Sent At</TableHead>
+                                                    <TableHead className="w-12 text-right">Actions</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -480,6 +519,16 @@ export default function GroupMailPage() {
                                                                 ? new Date(log.sentAt).toLocaleString()
                                                                 : '-'
                                                             }
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                                onClick={() => setLogToDelete(log.id)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
                                                         </TableCell>
                                                     </TableRow>
                                                 ))}
@@ -568,6 +617,31 @@ export default function GroupMailPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!logToDelete} onOpenChange={(open) => !open && setLogToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete this email log entry from the history.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleDeleteLog();
+                            }}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

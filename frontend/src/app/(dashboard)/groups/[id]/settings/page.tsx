@@ -395,8 +395,10 @@ export default function GroupSettingsPage() {
         setIsSavingEmail(false);
     };
 
-    const insertVariable = (variable: string) => {
-        setEmailTemplateHtml(prev => prev + `{${variable}}`);
+    const copyVariable = (variable: string) => {
+        const text = `{${variable}}`;
+        navigator.clipboard.writeText(text);
+        toast.success(`Copied ${text} to clipboard`);
     };
 
     const navItems = [
@@ -791,7 +793,7 @@ export default function GroupSettingsPage() {
                                             variant="secondary"
                                             size="sm"
                                             className="h-6 text-xs px-2 font-mono text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
-                                            onClick={() => insertVariable('CertificateID')}
+                                            onClick={() => copyVariable('CertificateID')}
                                         >
                                             {`{CertificateID}`}
                                         </Button>
@@ -814,7 +816,7 @@ export default function GroupSettingsPage() {
                                                     variant="secondary"
                                                     size="sm"
                                                     className="h-6 text-xs px-2 font-mono"
-                                                    onClick={() => insertVariable(varName)}
+                                                    onClick={() => copyVariable(varName)}
                                                 >
                                                     {`{${varName}}`}
                                                 </Button>

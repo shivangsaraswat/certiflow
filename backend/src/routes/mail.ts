@@ -223,4 +223,35 @@ router.get('/:groupId/mail/participants', async (req, res) => {
     }
 });
 
+/**
+ * DELETE /api/groups/:groupId/mail/history/:logId - Delete a mail log entry
+ */
+router.delete('/:groupId/mail/history/:logId', async (req, res) => {
+    try {
+        const { groupId, logId } = req.params;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Delete the log entry
+        await db
+            .delete(mailLogs)
+            .where(sql`${mailLogs.id} = ${logId} AND ${mailLogs.groupId} = ${groupId}`);
+
+        res.json({ success: true, message: 'Log entry deleted' });
+    } catch (error: any) {
+        console.error('Error deleting mail log:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete log entry' });
+    }
+});
+
 export default router;
