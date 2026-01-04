@@ -14,7 +14,10 @@ import {
     Settings,
     PanelLeftClose,
     PanelLeftOpen,
-    LogOut
+    LogOut,
+    Moon,
+    Sun,
+    User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -25,18 +28,19 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSeparator,
+    DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { CustomTooltip } from '@/components/ui/custom-tooltip';
+import { useSidebar } from '@/components/providers/sidebar-provider';
+import { useTheme } from 'next-themes';
 
-interface SidebarProps {
-    isCollapsed?: boolean;
-    toggleCollapse?: () => void;
-}
-
-export function Sidebar({ isCollapsed = false, toggleCollapse }: SidebarProps) {
+export function Sidebar() {
     const pathname = usePathname();
     const { data: session } = useSession();
     const user = session?.user;
+    const { isCollapsed, toggleSidebar } = useSidebar();
+    const { theme, setTheme } = useTheme();
 
     const items = [
         { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -47,9 +51,9 @@ export function Sidebar({ isCollapsed = false, toggleCollapse }: SidebarProps) {
         { title: 'Data Vault', href: '/data-vault', icon: Database },
     ];
 
-    if (user?.role === 'admin') {
-        items.push({ title: 'Admin', href: '/admin', icon: Settings });
-    }
+    const toggleTheme = () => {
+        setTheme(theme === "dark" ? "light" : "dark");
+    };
 
     return (
         <aside className="flex h-full w-full flex-col text-sidebar-foreground">
@@ -77,13 +81,13 @@ export function Sidebar({ isCollapsed = false, toggleCollapse }: SidebarProps) {
                 )}
 
                 {/* Toggle Button */}
-                {!isCollapsed && toggleCollapse && (
+                {!isCollapsed && (
                     <CustomTooltip content="Collapse Sidebar">
                         <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            onClick={toggleCollapse}
+                            onClick={toggleSidebar}
                         >
                             <PanelLeftClose className="h-4 w-4" />
                         </Button>
@@ -135,13 +139,13 @@ export function Sidebar({ isCollapsed = false, toggleCollapse }: SidebarProps) {
             {/* Bottom Actions */}
             <div className="mt-auto p-3 space-y-2">
                 {/* Expand Button if Collapsed */}
-                {isCollapsed && toggleCollapse && (
+                {isCollapsed && (
                     <CustomTooltip content="Expand Sidebar">
                         <Button
                             variant="ghost"
                             size="icon"
                             className="w-full h-10 flex items-center justify-center text-muted-foreground hover:text-foreground"
-                            onClick={toggleCollapse}
+                            onClick={toggleSidebar}
                         >
                             <PanelLeftOpen className="h-5 w-5" />
                         </Button>
@@ -174,14 +178,44 @@ export function Sidebar({ isCollapsed = false, toggleCollapse }: SidebarProps) {
                             </button>
                         )}
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align={isCollapsed ? "center" : "end"} side={isCollapsed ? "right" : "bottom"} className="w-56">
-                        <div className="flex items-center gap-2 p-2 border-b mb-1">
-                            <div className="flex flex-col space-y-1">
-                                <p className="text-sm font-medium leading-none">{user?.name}</p>
-                                <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                    <DropdownMenuContent align={isCollapsed ? "center" : "end"} side={isCollapsed ? "right" : "bottom"} className="w-64">
+                        <div className="flex items-center gap-2 p-2 px-2 border-b mb-1">
+                            <Avatar className="h-8 w-8 rounded-full">
+                                <AvatarImage src={user?.image || ""} />
+                                <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col space-y-1 overflow-hidden">
+                                <p className="text-sm font-medium leading-none truncate">{user?.name}</p>
+                                <p className="text-xs leading-none text-muted-foreground truncate">{user?.email}</p>
                             </div>
                         </div>
-                        <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive">
+
+                        <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
+                            {theme === 'dark' ? (
+                                <>
+                                    <Sun className="mr-2 h-4 w-4" />
+                                    <span>Light Mode</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Moon className="mr-2 h-4 w-4" />
+                                    <span>Dark Mode</span>
+                                </>
+                            )}
+                        </DropdownMenuItem>
+
+                        {user?.role === 'admin' && (
+                            <DropdownMenuItem asChild>
+                                <Link href="/admin" className="cursor-pointer">
+                                    <Settings className="mr-2 h-4 w-4" />
+                                    <span>Admin Panel</span>
+                                </Link>
+                            </DropdownMenuItem>
+                        )}
+
+                        <DropdownMenuSeparator />
+
+                        <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive cursor-pointer">
                             <LogOut className="mr-2 h-4 w-4" />
                             Log out
                         </DropdownMenuItem>

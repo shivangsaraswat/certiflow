@@ -3,21 +3,26 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Check, FileText, Database, Mail, ChevronRight, AlertCircle, Server, Columns, Eye, Code, RefreshCw } from 'lucide-react';
+import {
+    Check,
+    FileText,
+    Database,
+    Mail,
+    Server,
+    Settings,
+    Save,
+    RefreshCw,
+    Columns,
+    Eye,
+    Code,
+    LayoutTemplate
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -28,9 +33,12 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import { getGroup, getTemplates, updateGroupTemplate, updateGroupDataConfig, updateGroupEmailTemplate } from '@/lib/api';
 import type { Group, Template, DynamicAttribute } from '@/types';
 import { toast } from 'sonner';
+import { useSidebar } from '@/components/providers/sidebar-provider';
+import { cn } from '@/lib/utils';
 
 interface Spreadsheet {
     id: string;
@@ -38,39 +46,40 @@ interface Spreadsheet {
     updatedAt: string;
 }
 
+type SettingsSection = 'general' | 'template' | 'datavault' | 'smtp' | 'email';
+
 export default function GroupSettingsPage() {
     const params = useParams();
     const groupId = params.id as string;
     const { data: session } = useSession();
     const userId = session?.user?.id;
+    const { collapseSidebar } = useSidebar();
 
+    // Auto-collapse sidebar on mount
+    useEffect(() => {
+        collapseSidebar();
+    }, [collapseSidebar]);
+
+    const [activeSection, setActiveSection] = useState<SettingsSection>('general');
     const [group, setGroup] = useState<Group | null>(null);
     const [templates, setTemplates] = useState<Template[]>([]);
     const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Selected template for column mapping
+    // Selected template state
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-
-    // Template selection dialog
-    const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
-    // Data vault selection dialog
-    const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
+    // Data vault state
     const [selectedSheetId, setSelectedSheetId] = useState<string>('');
     const [isSavingData, setIsSavingData] = useState(false);
-
-    // Column mapping
-    const [isColumnMappingOpen, setIsColumnMappingOpen] = useState(false);
     const [sheetColumns, setSheetColumns] = useState<string[]>([]);
     const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
     const [loadingColumns, setLoadingColumns] = useState(false);
     const [isSavingMapping, setIsSavingMapping] = useState(false);
 
-    // SMTP Configuration dialog
-    const [isSmtpDialogOpen, setIsSmtpDialogOpen] = useState(false);
+    // SMTP state
     const [smtpConfig, setSmtpConfig] = useState({
         smtpHost: '',
         smtpPort: '587',
@@ -83,8 +92,7 @@ export default function GroupSettingsPage() {
     const [isSavingSmtp, setIsSavingSmtp] = useState(false);
     const [isTestingSmtp, setIsTestingSmtp] = useState(false);
 
-    // Email Template dialog
-    const [isEmailTemplateOpen, setIsEmailTemplateOpen] = useState(false);
+    // Email Template state
     const [emailSubject, setEmailSubject] = useState('');
     const [emailTemplateHtml, setEmailTemplateHtml] = useState('');
     const [emailPreviewMode, setEmailPreviewMode] = useState<'edit' | 'preview'>('edit');
@@ -92,52 +100,85 @@ export default function GroupSettingsPage() {
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+    const getDefaultEmailTemplate = () => `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; padding: 20px 0; }
+        .content { padding: 20px; background: #f9f9f9; border-radius: 8px; }
+        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Your Certificate</h1>
+        </div>
+        <div class="content">
+            <p>Dear {Name},</p>
+            <p>Please find attached your certificate.</p>
+            <p>Certificate ID: {CertificateID}</p>
+        </div>
+        <div class="footer">
+            <p>This is an automated message. Please do not reply.</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
     const loadData = useCallback(async () => {
         if (!userId || !groupId) return;
         setLoading(true);
 
-        const [groupRes, templatesRes, sheetsRes] = await Promise.all([
-            getGroup(groupId, userId),
-            getTemplates(userId),
-            fetch(`${baseUrl}/api/spreadsheets`, {
-                headers: { 'x-user-id': userId }
-            }).then(r => r.json()).catch(() => ({ success: false, data: [] })),
-        ]);
+        try {
+            const [groupRes, templatesRes, sheetsRes] = await Promise.all([
+                getGroup(groupId, userId),
+                getTemplates(userId),
+                fetch(`${baseUrl}/api/spreadsheets`, {
+                    headers: { 'x-user-id': userId }
+                }).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+            ]);
 
-        if (groupRes.success && groupRes.data) {
-            setGroup(groupRes.data);
-            setSelectedTemplateId(groupRes.data.templateId || '');
-            setSelectedSheetId(groupRes.data.sheetId || '');
-            setColumnMapping(groupRes.data.columnMapping || {});
-            setEmailSubject(groupRes.data.emailSubject || '');
-            setEmailTemplateHtml(groupRes.data.emailTemplateHtml || getDefaultEmailTemplate());
+            if (groupRes.success && groupRes.data) {
+                const gData = groupRes.data;
+                setGroup(gData);
+                setSelectedTemplateId(gData.templateId || '');
+                setSelectedSheetId(gData.sheetId || '');
+                setColumnMapping(gData.columnMapping || {});
+                setEmailSubject(gData.emailSubject || '');
+                setEmailTemplateHtml(gData.emailTemplateHtml || getDefaultEmailTemplate());
 
-            // Load SMTP config if exists
-            if (groupRes.data.smtpConfig) {
-                setSmtpConfig({
-                    smtpHost: groupRes.data.smtpConfig.smtpHost || '',
-                    smtpPort: groupRes.data.smtpConfig.smtpPort?.toString() || '587',
-                    smtpEmail: groupRes.data.smtpConfig.smtpEmail || '',
-                    smtpPassword: '', // Never show password
-                    encryptionType: groupRes.data.smtpConfig.encryptionType || 'TLS',
-                    senderName: groupRes.data.smtpConfig.senderName || '',
-                    replyTo: groupRes.data.smtpConfig.replyTo || '',
-                });
+                if (gData.smtpConfig) {
+                    setSmtpConfig({
+                        smtpHost: gData.smtpConfig.smtpHost || '',
+                        smtpPort: gData.smtpConfig.smtpPort?.toString() || '587',
+                        smtpEmail: gData.smtpConfig.smtpEmail || '',
+                        smtpPassword: '',
+                        encryptionType: gData.smtpConfig.encryptionType || 'TLS',
+                        senderName: gData.smtpConfig.senderName || '',
+                        replyTo: gData.smtpConfig.replyTo || '',
+                    });
+                }
             }
-        }
-        if (templatesRes.success && templatesRes.data) {
-            setTemplates(templatesRes.data);
-            // Find selected template for column mapping
-            if (groupRes.data?.templateId) {
-                const groupData = groupRes.data;
-                const tpl = templatesRes.data.find((t: Template) => t.id === groupData.templateId);
-                setSelectedTemplate(tpl || null);
-            }
-        }
-        if (sheetsRes.success && sheetsRes.data) {
-            setSpreadsheets(sheetsRes.data);
-        }
 
+            if (templatesRes.success && templatesRes.data) {
+                setTemplates(templatesRes.data);
+                if (groupRes.data?.templateId) {
+                    const tpl = templatesRes.data.find((t: Template) => t.id === groupRes.data.templateId);
+                    setSelectedTemplate(tpl || null);
+                }
+            }
+
+            if (sheetsRes.success && sheetsRes.data) {
+                setSpreadsheets(sheetsRes.data);
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to load settings");
+        }
         setLoading(false);
     }, [userId, groupId, baseUrl]);
 
@@ -145,22 +186,20 @@ export default function GroupSettingsPage() {
         loadData();
     }, [loadData]);
 
-    // Load spreadsheet columns when opening column mapping
     const loadSpreadsheetColumns = useCallback(async () => {
-        if (!group?.sheetId || !userId) return;
+        if (!selectedSheetId || !userId) return;
         setLoadingColumns(true);
         try {
-            const res = await fetch(`${baseUrl}/api/spreadsheets/${group.sheetId}`, {
+            const res = await fetch(`${baseUrl}/api/spreadsheets/${selectedSheetId}`, { // Use selectedSheetId
                 headers: { 'x-user-id': userId }
             });
             const data = await res.json();
 
             if (data.success && data.data?.content) {
-                const sheet = data.data.content[0]; // Get first sheet
+                const sheet = data.data.content[0];
                 const headers: string[] = [];
 
                 if (sheet) {
-                    // Extract headers logic - same as bulk generation
                     if (sheet.celldata && Array.isArray(sheet.celldata)) {
                         const row0Cells = sheet.celldata.filter((c: any) => c.r === 0);
                         row0Cells.forEach((cell: any) => {
@@ -178,42 +217,52 @@ export default function GroupSettingsPage() {
                         }
                     }
                 }
-
                 const cleanHeaders = headers.filter(h => h);
                 setSheetColumns(cleanHeaders);
 
-                // Auto-map existing column mapping if the group has one
-                if (group.columnMapping) {
-                    setColumnMapping(group.columnMapping as Record<string, string>);
-                } else if (selectedTemplate && cleanHeaders.length > 0) {
-                    // Auto-mapping logic
+                // Auto-map if columnMapping is empty or we just switched sheets (might want to reset mapping if switching sheets? keeping existing logic for now)
+                if (group?.sheetId === selectedSheetId && group.columnMapping) {
+                    // Using stored mapping
+                    // setColumnMapping(group.columnMapping as Record<string, string>); // Already set in loadData
+                } else if (selectedTemplate && cleanHeaders.length > 0 && Object.keys(columnMapping).length === 0) {
+                    // Auto mapping
                     const initialMapping: Record<string, string> = {};
                     selectedTemplate.attributes.forEach(attr => {
                         if (attr.name.toLowerCase().includes('email')) {
-                            const emailHeader = cleanHeaders.find(h =>
-                                h.toLowerCase() === 'email' ||
-                                h.toLowerCase() === 'e-mail' ||
-                                h.toLowerCase() === 'mail' ||
-                                h.toLowerCase().includes('email')
-                            );
+                            const emailHeader = cleanHeaders.find(h => h.toLowerCase().includes('email') || h.toLowerCase() === 'mail');
                             if (emailHeader) initialMapping[attr.id] = emailHeader;
                         } else {
-                            const matchingHeader = cleanHeaders.find(h =>
-                                h.toLowerCase() === attr.name.toLowerCase() ||
-                                h.toLowerCase().includes(attr.name.toLowerCase())
-                            );
+                            const matchingHeader = cleanHeaders.find(h => h.toLowerCase().includes(attr.name.toLowerCase()));
                             if (matchingHeader) initialMapping[attr.id] = matchingHeader;
                         }
                     });
+                    // Email for sending
+                    const emailHeader = cleanHeaders.find(h => h.toLowerCase().includes('email') || h.toLowerCase() === 'mail');
+                    if (emailHeader) initialMapping['email'] = emailHeader;
+
                     setColumnMapping(initialMapping);
                 }
             }
         } catch (error) {
-            console.error('Failed to load spreadsheet columns:', error);
-            toast.error('Failed to load spreadsheet columns');
+            console.error('Failed to load columns:', error);
+            // toast.error('Failed to load columns');
         }
         setLoadingColumns(false);
-    }, [group?.sheetId, group?.columnMapping, userId, baseUrl, selectedTemplate]);
+    }, [selectedSheetId, userId, baseUrl, selectedTemplate, group, columnMapping]);
+
+    // Triggers column load when DataVault section is active and we have a selected sheet
+    useEffect(() => {
+        if (activeSection === 'datavault' && selectedSheetId) {
+            loadSpreadsheetColumns();
+        }
+    }, [activeSection, selectedSheetId, loadSpreadsheetColumns]);
+
+    // Also update selected template object when ID changes
+    useEffect(() => {
+        const tpl = templates.find(t => t.id === selectedTemplateId);
+        setSelectedTemplate(tpl || null);
+    }, [selectedTemplateId, templates]);
+
 
     const handleSaveTemplate = async () => {
         if (!selectedTemplateId) return;
@@ -222,7 +271,6 @@ export default function GroupSettingsPage() {
         if (result.success) {
             toast.success('Template updated');
             await loadData();
-            setIsTemplateDialogOpen(false);
         } else {
             toast.error('Failed to update template');
         }
@@ -235,34 +283,15 @@ export default function GroupSettingsPage() {
         const result = await updateGroupDataConfig(groupId, {
             sheetId: selectedSheetId,
             selectedSheetTab: null,
-            columnMapping: null,
-        }, userId);
-        if (result.success) {
-            toast.success('Data vault connected');
-            await loadData();
-            setIsDataDialogOpen(false);
-        } else {
-            toast.error('Failed to connect data vault');
-        }
-        setIsSavingData(false);
-    };
-
-    const handleSaveColumnMapping = async () => {
-        if (!group?.sheetId) return;
-        setIsSavingMapping(true);
-        const result = await updateGroupDataConfig(groupId, {
-            sheetId: group.sheetId,
-            selectedSheetTab: null,
             columnMapping: columnMapping,
         }, userId);
         if (result.success) {
-            toast.success('Column mapping saved');
+            toast.success('Data vault configuration saved');
             await loadData();
-            setIsColumnMappingOpen(false);
         } else {
-            toast.error('Failed to save column mapping');
+            toast.error('Failed to save data configuration');
         }
-        setIsSavingMapping(false);
+        setIsSavingData(false);
     };
 
     const handleSaveSmtpConfig = async () => {
@@ -288,7 +317,6 @@ export default function GroupSettingsPage() {
             if (data.success) {
                 toast.success('SMTP configuration saved');
                 await loadData();
-                setIsSmtpDialogOpen(false);
             } else {
                 toast.error(data.error || 'Failed to save SMTP configuration');
             }
@@ -336,674 +364,376 @@ export default function GroupSettingsPage() {
         if (result.success) {
             toast.success('Email template saved');
             await loadData();
-            setIsEmailTemplateOpen(false);
         } else {
             toast.error('Failed to save email template');
         }
         setIsSavingEmail(false);
     };
 
-    const getDefaultEmailTemplate = () => `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { text-align: center; padding: 20px 0; }
-        .content { padding: 20px; background: #f9f9f9; border-radius: 8px; }
-        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Your Certificate</h1>
-        </div>
-        <div class="content">
-            <p>Dear {Name},</p>
-            <p>Please find attached your certificate.</p>
-            <p>Certificate ID: {CertificateID}</p>
-        </div>
-        <div class="footer">
-            <p>This is an automated message. Please do not reply.</p>
-        </div>
-    </div>
-</body>
-</html>`;
-
     const insertVariable = (variable: string) => {
         setEmailTemplateHtml(prev => prev + `{${variable}}`);
     };
 
-    const isConfigured = group?.templateId && group?.sheetId;
-    const hasSmtpConfig = group?.smtpConfig?.isConfigured;
-    const hasEmailTemplate = !!group?.emailTemplateHtml;
-    const hasColumnMapping = group?.columnMapping && Object.keys(group.columnMapping).length > 0;
+    const navItems = [
+        { id: 'general', label: 'General', icon: Settings },
+        { id: 'template', label: 'Certificate Template', icon: FileText },
+        { id: 'datavault', label: 'Data Vault', icon: Database },
+        { id: 'smtp', label: 'SMTP Configuration', icon: Server },
+        { id: 'email', label: 'Email Template', icon: Mail },
+    ];
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div className="flex h-[calc(100vh-theme(spacing.20))] items-center justify-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
         );
     }
 
-    if (!group) {
-        return (
-            <div className="text-center py-12">
-                <p className="text-muted-foreground">Group not found</p>
-                <Button asChild className="mt-4">
-                    <a href="/groups">Back to Groups</a>
-                </Button>
-            </div>
-        );
-    }
+    if (!group) return <div>Group not found</div>;
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold tracking-tight">Group Settings</h2>
-                <p className="text-muted-foreground">
-                    Configure your certificate template, data source, and email settings.
-                </p>
-            </div>
+        <div className="flex h-[calc(100vh-theme(spacing.20))] -mx-6 -my-4 bg-background">
+            {/* Internal Sidebar */}
+            <aside className="w-64 border-r bg-muted/10 p-4">
+                <div className="mb-6 px-2">
+                    <h2 className="text-lg font-semibold tracking-tight">{group.name}</h2>
+                    <p className="text-xs text-muted-foreground truncate" title={group.id}>ID: {group.id}</p>
+                </div>
+                <nav className="space-y-1">
+                    {navItems.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => setActiveSection(item.id as SettingsSection)}
+                            className={cn(
+                                "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                                activeSection === item.id
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                        >
+                            <item.icon className="h-4 w-4" />
+                            {item.label}
+                        </button>
+                    ))}
+                </nav>
+            </aside>
 
-            {!isConfigured && (
-                <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                        Complete the configuration below to start generating certificates.
-                    </AlertDescription>
-                </Alert>
-            )}
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-8">
+                <div className="mx-auto max-w-4xl space-y-8">
 
-            <div className="grid gap-4">
-                {/* Template Configuration */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${group.templateId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
-                                    {group.templateId ? <Check className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
-                                </div>
-                                <div>
-                                    <CardTitle className="text-base">Certificate Template</CardTitle>
-                                    <CardDescription>
-                                        {group.template
-                                            ? `Using: ${group.template.name} (${group.template.code})`
-                                            : 'Select a template for your certificates'
-                                        }
-                                    </CardDescription>
-                                </div>
-                            </div>
-                            <Button
-                                variant={group.templateId ? "outline" : "default"}
-                                size="sm"
-                                onClick={() => setIsTemplateDialogOpen(true)}
-                            >
-                                {group.templateId ? 'Change' : 'Configure'}
-                                <ChevronRight className="ml-1 h-4 w-4" />
-                            </Button>
-                        </div>
-                    </CardHeader>
-                </Card>
+                    {/* Header */}
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">
+                            {navItems.find(i => i.id === activeSection)?.label}
+                        </h1>
+                        <p className="text-muted-foreground">
+                            {activeSection === 'general' && "Manage general group settings."}
+                            {activeSection === 'template' && "Select the certificate design for this group."}
+                            {activeSection === 'datavault' && "Connect data source and map columns."}
+                            {activeSection === 'smtp' && "Configure outgoing email server."}
+                            {activeSection === 'email' && "Design the email body sent to recipients."}
+                        </p>
+                    </div>
+                    <Separator />
 
-                {/* Data Vault Configuration */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${group.sheetId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
-                                    {group.sheetId ? <Check className="h-5 w-5" /> : <Database className="h-5 w-5" />}
-                                </div>
-                                <div>
-                                    <CardTitle className="text-base">Data Vault</CardTitle>
-                                    <CardDescription>
-                                        {group.sheet
-                                            ? `Connected: ${group.sheet.name}`
-                                            : 'Connect a spreadsheet for bulk generation'
-                                        }
-                                    </CardDescription>
-                                </div>
-                            </div>
-                            <div className="flex gap-2">
-                                {group.sheetId && selectedTemplate && (
-                                    <Button
-                                        variant={hasColumnMapping ? "outline" : "secondary"}
-                                        size="sm"
-                                        onClick={() => {
-                                            loadSpreadsheetColumns();
-                                            setIsColumnMappingOpen(true);
-                                        }}
-                                    >
-                                        <Columns className="mr-1 h-4 w-4" />
-                                        {hasColumnMapping ? 'Edit Mapping' : 'Map Columns'}
-                                    </Button>
-                                )}
-                                <Button
-                                    variant={group.sheetId ? "outline" : "default"}
-                                    size="sm"
-                                    onClick={() => setIsDataDialogOpen(true)}
-                                >
-                                    {group.sheetId ? 'Change' : 'Configure'}
-                                    <ChevronRight className="ml-1 h-4 w-4" />
-                                </Button>
-                            </div>
-                        </div>
-                    </CardHeader>
-                </Card>
-
-                {/* SMTP Configuration */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${hasSmtpConfig ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
-                                    {hasSmtpConfig ? <Check className="h-5 w-5" /> : <Server className="h-5 w-5" />}
-                                </div>
-                                <div>
-                                    <CardTitle className="text-base">SMTP Configuration</CardTitle>
-                                    <CardDescription>
-                                        {hasSmtpConfig
-                                            ? `Connected: ${group.smtpConfig?.smtpEmail}`
-                                            : 'Configure email server for sending certificates'
-                                        }
-                                    </CardDescription>
-                                </div>
-                            </div>
-                            <Button
-                                variant={hasSmtpConfig ? "outline" : "default"}
-                                size="sm"
-                                onClick={() => setIsSmtpDialogOpen(true)}
-                            >
-                                {hasSmtpConfig ? 'Edit' : 'Configure'}
-                                <ChevronRight className="ml-1 h-4 w-4" />
-                            </Button>
-                        </div>
-                    </CardHeader>
-                </Card>
-
-                {/* Email Template */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${hasEmailTemplate ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
-                                    {hasEmailTemplate ? <Check className="h-5 w-5" /> : <Mail className="h-5 w-5" />}
-                                </div>
-                                <div>
-                                    <CardTitle className="text-base">Email Template</CardTitle>
-                                    <CardDescription>
-                                        {hasEmailTemplate
-                                            ? `Subject: ${group.emailSubject || 'Your Certificate'}`
-                                            : 'Create the email template for certificate delivery'
-                                        }
-                                    </CardDescription>
-                                </div>
-                            </div>
-                            <Button
-                                variant={hasEmailTemplate ? "outline" : "default"}
-                                size="sm"
-                                onClick={() => setIsEmailTemplateOpen(true)}
-                            >
-                                {hasEmailTemplate ? 'Edit' : 'Configure'}
-                                <ChevronRight className="ml-1 h-4 w-4" />
-                            </Button>
-                        </div>
-                    </CardHeader>
-                </Card>
-            </div>
-
-            {/* Template Selection Dialog */}
-            <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Select Template</DialogTitle>
-                        <DialogDescription>
-                            Choose a certificate template for this group.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="py-4 max-h-[400px] overflow-y-auto">
-                        {templates.length === 0 ? (
-                            <div className="text-center py-8">
-                                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                                <p className="text-muted-foreground mb-4">No templates available</p>
-                                <Button asChild>
-                                    <a href="/templates/new">Create Template</a>
-                                </Button>
-                            </div>
-                        ) : (
-                            <RadioGroup value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                    {/* GENERAL SECTION */}
+                    {activeSection === 'general' && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Group Details</CardTitle>
+                                <CardDescription>Basic information about your group.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
                                 <div className="space-y-2">
-                                    {templates.map((template) => (
-                                        <div
-                                            key={template.id}
-                                            className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${selectedTemplateId === template.id
-                                                ? 'border-primary bg-primary/5'
-                                                : 'border-border hover:border-primary/50'
-                                                }`}
-                                            onClick={() => setSelectedTemplateId(template.id)}
-                                        >
-                                            <RadioGroupItem value={template.id} id={template.id} />
-                                            <Label htmlFor={template.id} className="flex-1 cursor-pointer">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium">{template.name}</span>
-                                                    <Badge variant="secondary" className="text-xs">{template.code}</Badge>
-                                                </div>
-                                                {template.description && (
-                                                    <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
+                                    <Label>Group Name</Label>
+                                    <Input value={group.name} disabled />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Created At</Label>
+                                    <Input value={new Date(group.createdAt).toLocaleDateString()} disabled />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* TEMPLATE SECTION */}
+                    {activeSection === 'template' && (
+                        <div className="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Select Template</CardTitle>
+                                    <CardDescription>Choose from your available certificate templates.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {templates.length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <p className="text-muted-foreground">No templates available. Create one first.</p>
+                                        </div>
+                                    ) : (
+                                        <RadioGroup value={selectedTemplateId} onValueChange={setSelectedTemplateId} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {templates.map((tpl) => (
+                                                <div key={tpl.id} className={cn(
+                                                    "flex items-start space-x-3 space-y-0 rounded-md border p-4 cursor-pointer transition-all hover:border-primary/50",
+                                                    selectedTemplateId === tpl.id ? "border-primary bg-primary/5 shadow-sm" : ""
                                                 )}
-                                            </Label>
-                                        </div>
-                                    ))}
-                                </div>
-                            </RadioGroup>
-                        )}
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSaveTemplate}
-                            disabled={!selectedTemplateId || isSavingTemplate}
-                        >
-                            {isSavingTemplate ? 'Saving...' : 'Save'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Data Vault Selection Dialog */}
-            <Dialog open={isDataDialogOpen} onOpenChange={setIsDataDialogOpen}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Select Data Vault</DialogTitle>
-                        <DialogDescription>
-                            Choose a spreadsheet to use as the data source for bulk generation.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="py-4 max-h-[400px] overflow-y-auto">
-                        {spreadsheets.length === 0 ? (
-                            <div className="text-center py-8">
-                                <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                                <p className="text-muted-foreground mb-4">No spreadsheets available</p>
-                                <Button asChild>
-                                    <a href="/data-vault">Create Spreadsheet</a>
+                                                    onClick={() => setSelectedTemplateId(tpl.id)}
+                                                >
+                                                    <RadioGroupItem value={tpl.id} id={tpl.id} className="mt-1" />
+                                                    <div className="space-y-1">
+                                                        <Label htmlFor={tpl.id} className="font-medium cursor-pointer">{tpl.name}</Label>
+                                                        <p className="text-xs text-muted-foreground">{tpl.code}</p>
+                                                        {tpl.description && <p className="text-xs text-muted-foreground pt-1">{tpl.description}</p>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </RadioGroup>
+                                    )}
+                                </CardContent>
+                            </Card>
+                            <div className="flex justify-end">
+                                <Button onClick={handleSaveTemplate} disabled={!selectedTemplateId || isSavingTemplate}>
+                                    {isSavingTemplate && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                                    Save Changes
                                 </Button>
                             </div>
-                        ) : (
-                            <RadioGroup value={selectedSheetId} onValueChange={setSelectedSheetId}>
-                                <div className="space-y-2">
-                                    {spreadsheets.map((sheet) => (
-                                        <div
-                                            key={sheet.id}
-                                            className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${selectedSheetId === sheet.id
-                                                ? 'border-primary bg-primary/5'
-                                                : 'border-border hover:border-primary/50'
-                                                }`}
-                                            onClick={() => setSelectedSheetId(sheet.id)}
-                                        >
-                                            <RadioGroupItem value={sheet.id} id={sheet.id} />
-                                            <Label htmlFor={sheet.id} className="flex-1 cursor-pointer">
-                                                <span className="font-medium">{sheet.name}</span>
-                                                <p className="text-sm text-muted-foreground mt-1">
-                                                    Last updated: {new Date(sheet.updatedAt).toLocaleDateString()}
-                                                </p>
-                                            </Label>
-                                        </div>
-                                    ))}
-                                </div>
-                            </RadioGroup>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDataDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSaveDataConfig}
-                            disabled={!selectedSheetId || isSavingData}
-                        >
-                            {isSavingData ? 'Saving...' : 'Save'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Column Mapping Dialog */}
-            <Dialog open={isColumnMappingOpen} onOpenChange={setIsColumnMappingOpen}>
-                <DialogContent className="sm:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Column Mapping</DialogTitle>
-                        <DialogDescription>
-                            Map your spreadsheet columns to certificate template fields.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="py-4">
-                        {loadingColumns ? (
-                            <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                            </div>
-                        ) : sheetColumns.length === 0 ? (
-                            <div className="text-center py-8">
-                                <p className="text-muted-foreground">No columns found in spreadsheet. Make sure the first row contains headers.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <p className="text-sm text-muted-foreground">
-                                    For each template field, select the corresponding spreadsheet column.
-                                </p>
-                                <div className="grid gap-3">
-                                    {selectedTemplate?.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
-                                        <div key={attr.id} className="flex items-center gap-4">
-                                            <div className="w-1/3">
-                                                <Label className="font-medium">
-                                                    {attr.name}
-                                                    {attr.required && <span className="text-destructive ml-1">*</span>}
-                                                </Label>
-                                            </div>
-                                            <div className="w-2/3">
-                                                <Select
-                                                    value={columnMapping[attr.id] || '__skip__'}
-                                                    onValueChange={(value) => {
-                                                        setColumnMapping(prev => {
-                                                            const newMapping = { ...prev };
-                                                            if (value === '__skip__') {
-                                                                delete newMapping[attr.id];
-                                                            } else {
-                                                                newMapping[attr.id] = value;
-                                                            }
-                                                            return newMapping;
-                                                        });
-                                                    }}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select column..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
-                                                        {sheetColumns.map((col) => (
-                                                            <SelectItem key={col} value={col}>
-                                                                {col}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                    {/* DATA VAULT SECTION */}
+                    {activeSection === 'datavault' && (
+                        <div className="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Data Source</CardTitle>
+                                    <CardDescription>Select the spreadsheet containing your recipient data.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {spreadsheets.length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <p className="text-muted-foreground">No spreadsheets found.</p>
                                         </div>
-                                    ))}
-                                    {/* Email column mapping */}
-                                    <div className="flex items-center gap-4 pt-2 border-t">
-                                        <div className="w-1/3">
-                                            <Label className="font-medium">
-                                                Email Address
-                                                <span className="text-muted-foreground text-xs ml-1">(for sending)</span>
-                                            </Label>
-                                        </div>
-                                        <div className="w-2/3">
-                                            <Select
-                                                value={columnMapping['email'] || '__skip__'}
-                                                onValueChange={(value) => {
-                                                    setColumnMapping(prev => {
-                                                        const newMapping = { ...prev };
-                                                        if (value === '__skip__') {
-                                                            delete newMapping['email'];
-                                                        } else {
-                                                            newMapping['email'] = value;
-                                                        }
-                                                        return newMapping;
-                                                    });
-                                                }}
-                                            >
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <Label>Select Spreadsheet</Label>
+                                            <Select value={selectedSheetId} onValueChange={setSelectedSheetId}>
                                                 <SelectTrigger>
-                                                    <SelectValue placeholder="Select column..." />
+                                                    <SelectValue placeholder="Select a spreadsheet" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
-                                                    {sheetColumns.map((col) => (
-                                                        <SelectItem key={col} value={col}>
-                                                            {col}
-                                                        </SelectItem>
+                                                    {spreadsheets.map(sheet => (
+                                                        <SelectItem key={sheet.id} value={sheet.id}>{sheet.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
+                                            {selectedSheetId && (
+                                                <p className="text-sm text-muted-foreground">
+                                                    Selected: {spreadsheets.find(s => s.id === selectedSheetId)?.name}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+
+                            {selectedSheetId && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Column Mapping</CardTitle>
+                                        <CardDescription>Map spreadsheet columns to template placeholders.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {loadingColumns ? (
+                                            <div className="flex justify-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                                        ) : sheetColumns.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No columns detected. Ensure the first row has headers.</p>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {!selectedTemplate ? (
+                                                    <Alert>
+                                                        <AlertDescription>Please select a template in the Template tab first.</AlertDescription>
+                                                    </Alert>
+                                                ) : (
+                                                    <div className="grid gap-4">
+                                                        {selectedTemplate.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
+                                                            <div key={attr.id} className="grid grid-cols-3 items-center gap-4">
+                                                                <Label className="col-span-1">
+                                                                    {attr.name} {attr.required && <span className="text-destructive">*</span>}
+                                                                </Label>
+                                                                <div className="col-span-2">
+                                                                    <Select value={columnMapping[attr.id] || '__skip__'}
+                                                                        onValueChange={(val) => setColumnMapping(prev => {
+                                                                            const n = { ...prev };
+                                                                            if (val === '__skip__') delete n[attr.id]; else n[attr.id] = val;
+                                                                            return n;
+                                                                        })}
+                                                                    >
+                                                                        <SelectTrigger>
+                                                                            <SelectValue placeholder="Select column" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
+                                                                            {sheetColumns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        <Separator className="my-2" />
+                                                        <div className="grid grid-cols-3 items-center gap-4">
+                                                            <Label className="col-span-1">Email Address <span className="text-xs text-muted-foreground">(for sending)</span></Label>
+                                                            <div className="col-span-2">
+                                                                <Select value={columnMapping['email'] || '__skip__'}
+                                                                    onValueChange={(val) => setColumnMapping(prev => {
+                                                                        const n = { ...prev };
+                                                                        if (val === '__skip__') delete n['email']; else n['email'] = val;
+                                                                        return n;
+                                                                    })}
+                                                                >
+                                                                    <SelectTrigger>
+                                                                        <SelectValue placeholder="Select column" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
+                                                                        {sheetColumns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            <div className="flex justify-end">
+                                <Button onClick={handleSaveDataConfig} disabled={!selectedSheetId || isSavingData}>
+                                    {isSavingData && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                                    Save Configuration
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SMTP SECTION */}
+                    {activeSection === 'smtp' && (
+                        <div className="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>SMTP Settings</CardTitle>
+                                    <CardDescription>Configure your custom email sending server.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>SMTP Host</Label>
+                                            <Input value={smtpConfig.smtpHost} onChange={e => setSmtpConfig(p => ({ ...p, smtpHost: e.target.value }))} placeholder="smtp.gmail.com" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Port</Label>
+                                            <Input value={smtpConfig.smtpPort} onChange={e => setSmtpConfig(p => ({ ...p, smtpPort: e.target.value }))} placeholder="587" />
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsColumnMappingOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSaveColumnMapping}
-                            disabled={isSavingMapping}
-                        >
-                            {isSavingMapping ? 'Saving...' : 'Save Mapping'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* SMTP Configuration Dialog */}
-            <Dialog open={isSmtpDialogOpen} onOpenChange={setIsSmtpDialogOpen}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>SMTP Configuration</DialogTitle>
-                        <DialogDescription>
-                            Configure your email server settings for sending certificates.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="py-4 space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="smtpHost">SMTP Host *</Label>
-                                <Input
-                                    id="smtpHost"
-                                    placeholder="smtp.gmail.com"
-                                    value={smtpConfig.smtpHost}
-                                    onChange={(e) => setSmtpConfig(prev => ({ ...prev, smtpHost: e.target.value }))}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="smtpPort">Port *</Label>
-                                <Input
-                                    id="smtpPort"
-                                    placeholder="587"
-                                    value={smtpConfig.smtpPort}
-                                    onChange={(e) => setSmtpConfig(prev => ({ ...prev, smtpPort: e.target.value }))}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="smtpEmail">Email Address *</Label>
-                            <Input
-                                id="smtpEmail"
-                                type="email"
-                                placeholder="sender@example.com"
-                                value={smtpConfig.smtpEmail}
-                                onChange={(e) => setSmtpConfig(prev => ({ ...prev, smtpEmail: e.target.value }))}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="smtpPassword">App Password *</Label>
-                            <Input
-                                id="smtpPassword"
-                                type="password"
-                                placeholder="••••••••••••••••"
-                                value={smtpConfig.smtpPassword}
-                                onChange={(e) => setSmtpConfig(prev => ({ ...prev, smtpPassword: e.target.value }))}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                For Gmail, use an App Password instead of your account password.
-                            </p>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Encryption</Label>
-                            <Select
-                                value={smtpConfig.encryptionType}
-                                onValueChange={(value) => setSmtpConfig(prev => ({ ...prev, encryptionType: value }))}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select encryption..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="TLS">TLS (Recommended)</SelectItem>
-                                    <SelectItem value="SSL">SSL</SelectItem>
-                                    <SelectItem value="NONE">None</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="senderName">Sender Display Name</Label>
-                            <Input
-                                id="senderName"
-                                placeholder="Certificate System"
-                                value={smtpConfig.senderName}
-                                onChange={(e) => setSmtpConfig(prev => ({ ...prev, senderName: e.target.value }))}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="replyTo">Reply-To Email (optional)</Label>
-                            <Input
-                                id="replyTo"
-                                type="email"
-                                placeholder="reply@example.com"
-                                value={smtpConfig.replyTo}
-                                onChange={(e) => setSmtpConfig(prev => ({ ...prev, replyTo: e.target.value }))}
-                            />
-                        </div>
-                    </div>
-
-                    <DialogFooter className="flex justify-between">
-                        <Button
-                            variant="outline"
-                            onClick={handleTestSmtp}
-                            disabled={isTestingSmtp || !smtpConfig.smtpHost || !smtpConfig.smtpEmail || !smtpConfig.smtpPassword}
-                        >
-                            {isTestingSmtp ? (
-                                <>
-                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                    Testing...
-                                </>
-                            ) : (
-                                'Test Connection'
-                            )}
-                        </Button>
-                        <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => setIsSmtpDialogOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleSaveSmtpConfig}
-                                disabled={isSavingSmtp || !smtpConfig.smtpHost || !smtpConfig.smtpEmail}
-                            >
-                                {isSavingSmtp ? 'Saving...' : 'Save'}
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Email Template Dialog */}
-            <Dialog open={isEmailTemplateOpen} onOpenChange={setIsEmailTemplateOpen}>
-                <DialogContent className="sm:max-w-4xl max-h-[90vh]">
-                    <DialogHeader>
-                        <DialogTitle>Email Template</DialogTitle>
-                        <DialogDescription>
-                            Create the email that will be sent with the certificate attachment.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="py-4 space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="emailSubject">Subject Line</Label>
-                            <Input
-                                id="emailSubject"
-                                placeholder="Your Certificate - {Name}"
-                                value={emailSubject}
-                                onChange={(e) => setEmailSubject(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm text-muted-foreground">Insert variable:</span>
-                            <Button variant="outline" size="sm" onClick={() => insertVariable('Name')}>
-                                {'{Name}'}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => insertVariable('Email')}>
-                                {'{Email}'}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => insertVariable('CertificateID')}>
-                                {'{CertificateID}'}
-                            </Button>
-                            {selectedTemplate?.attributes.filter(a => a.id !== 'certificateId').map(attr => (
-                                <Button key={attr.id} variant="outline" size="sm" onClick={() => insertVariable(attr.name)}>
-                                    {`{${attr.name}}`}
+                                    <div className="space-y-2">
+                                        <Label>Email Address</Label>
+                                        <Input value={smtpConfig.smtpEmail} onChange={e => setSmtpConfig(p => ({ ...p, smtpEmail: e.target.value }))} type="email" placeholder="sender@example.com" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>App Password</Label>
+                                        <Input value={smtpConfig.smtpPassword} onChange={e => setSmtpConfig(p => ({ ...p, smtpPassword: e.target.value }))} type="password" placeholder="••••••••" />
+                                        <p className="text-xs text-muted-foreground">Use an App Password if using Gmail/Outlook.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Encryption</Label>
+                                        <Select value={smtpConfig.encryptionType} onValueChange={v => setSmtpConfig(p => ({ ...p, encryptionType: v }))}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="TLS">TLS</SelectItem>
+                                                <SelectItem value="SSL">SSL</SelectItem>
+                                                <SelectItem value="NONE">None</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Sender Name (Optional)</Label>
+                                        <Input value={smtpConfig.senderName} onChange={e => setSmtpConfig(p => ({ ...p, senderName: e.target.value }))} placeholder="Certificate System" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Reply-To (Optional)</Label>
+                                        <Input value={smtpConfig.replyTo} onChange={e => setSmtpConfig(p => ({ ...p, replyTo: e.target.value }))} placeholder="reply@example.com" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                            <div className="flex justify-between items-center">
+                                <Button variant="outline" onClick={handleTestSmtp} disabled={isTestingSmtp || !smtpConfig.smtpHost}>
+                                    {isTestingSmtp ? "Testing..." : "Test Connection"}
                                 </Button>
-                            ))}
+                                <Button onClick={handleSaveSmtpConfig} disabled={isSavingSmtp}>
+                                    {isSavingSmtp && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                                    Save SMTP Settings
+                                </Button>
+                            </div>
                         </div>
+                    )}
 
-                        <Tabs value={emailPreviewMode} onValueChange={(v) => setEmailPreviewMode(v as 'edit' | 'preview')}>
-                            <TabsList>
-                                <TabsTrigger value="edit">
-                                    <Code className="mr-2 h-4 w-4" />
-                                    Edit HTML
-                                </TabsTrigger>
-                                <TabsTrigger value="preview">
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    Preview
-                                </TabsTrigger>
-                            </TabsList>
-                            <TabsContent value="edit" className="mt-4">
-                                <Textarea
-                                    className="font-mono text-sm min-h-[300px]"
-                                    value={emailTemplateHtml}
-                                    onChange={(e) => setEmailTemplateHtml(e.target.value)}
-                                    placeholder="Enter your HTML email template..."
-                                />
-                            </TabsContent>
-                            <TabsContent value="preview" className="mt-4">
-                                <div className="border rounded-lg p-4 min-h-[300px] bg-white">
-                                    <iframe
-                                        srcDoc={emailTemplateHtml}
-                                        className="w-full min-h-[280px] border-0"
-                                        title="Email Preview"
-                                    />
-                                </div>
-                            </TabsContent>
-                        </Tabs>
-                    </div>
+                    {/* EMAIL TEMPLATE SECTION */}
+                    {activeSection === 'email' && (
+                        <div className="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Email Content</CardTitle>
+                                    <CardDescription>Compose the email sent with the certificate.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label>Subject Line</Label>
+                                        <Input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Your Certificate" />
+                                    </div>
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEmailTemplateOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSaveEmailTemplate}
-                            disabled={isSavingEmail}
-                        >
-                            {isSavingEmail ? 'Saving...' : 'Save Template'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm text-muted-foreground">Variables:</span>
+                                        {['Name', 'Email', 'CertificateID'].map(v => (
+                                            <Button key={v} variant="secondary" size="xs" className="h-6 text-xs" onClick={() => insertVariable(v)}>{`{${v}}`}</Button>
+                                        ))}
+                                        {selectedTemplate?.attributes.filter(a => a.id !== 'certificateId').map(attr => (
+                                            <Button key={attr.id} variant="secondary" size="xs" className="h-6 text-xs" onClick={() => insertVariable(attr.name)}>{`{${attr.name}}`}</Button>
+                                        ))}
+                                    </div>
+
+                                    <Tabs value={emailPreviewMode} onValueChange={(v) => setEmailPreviewMode(v as 'edit' | 'preview')}>
+                                        <TabsList className="w-full justify-start">
+                                            <TabsTrigger value="edit">Edit HTML</TabsTrigger>
+                                            <TabsTrigger value="preview">Preview</TabsTrigger>
+                                        </TabsList>
+                                        <TabsContent value="edit">
+                                            <Textarea
+                                                className="min-h-[300px] font-mono text-sm"
+                                                value={emailTemplateHtml}
+                                                onChange={e => setEmailTemplateHtml(e.target.value)}
+                                            />
+                                        </TabsContent>
+                                        <TabsContent value="preview">
+                                            <div className="border rounded-md p-4 bg-white min-h-[300px]">
+                                                <iframe srcDoc={emailTemplateHtml} className="w-full h-full border-0 min-h-[280px]" title="Preview" />
+                                            </div>
+                                        </TabsContent>
+                                    </Tabs>
+                                </CardContent>
+                            </Card>
+                            <div className="flex justify-end">
+                                <Button onClick={handleSaveEmailTemplate} disabled={isSavingEmail}>
+                                    {isSavingEmail && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                                    Save Email Template
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            </div>
         </div>
     );
 }

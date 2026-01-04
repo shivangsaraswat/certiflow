@@ -1,5 +1,6 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageTitleProvider } from "@/components/providers/page-title-provider";
+import { SidebarProvider } from "@/components/providers/sidebar-provider";
 
 export default function DashboardLayout({
     children,
@@ -8,9 +9,11 @@ export default function DashboardLayout({
 }) {
     return (
         <PageTitleProvider>
-            <DashboardShell>
-                {children}
-            </DashboardShell>
+            <SidebarProvider>
+                <DashboardShell>
+                    {children}
+                </DashboardShell>
+            </SidebarProvider>
         </PageTitleProvider>
     );
 }

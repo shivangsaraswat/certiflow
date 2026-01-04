@@ -1,32 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { cn } from '@/lib/utils';
+import { useSidebar } from '@/components/providers/sidebar-provider';
 
 interface DashboardShellProps {
     children: React.ReactNode;
 }
 
 export function DashboardShell({ children }: DashboardShellProps) {
-    // Default to false (expanded) to match server render
-    const [isCollapsed, setIsCollapsed] = useState(false);
-    const [isMounted, setIsMounted] = useState(false);
-
-    useEffect(() => {
-        setIsMounted(true);
-        const stored = localStorage.getItem('sidebar-collapsed');
-        if (stored === 'true') {
-            setIsCollapsed(true);
-        }
-    }, []);
-
-    const toggleCollapse = () => {
-        const newState = !isCollapsed;
-        setIsCollapsed(newState);
-        localStorage.setItem('sidebar-collapsed', String(newState));
-    };
+    const { isCollapsed } = useSidebar();
 
     return (
         <div className="flex min-h-screen">
@@ -35,7 +19,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
                 "hidden lg:block fixed left-0 top-0 h-full z-40 transition-all duration-300 ease-in-out border-r bg-sidebar",
                 isCollapsed ? "w-[72px]" : "w-64"
             )}>
-                <Sidebar isCollapsed={isCollapsed} toggleCollapse={toggleCollapse} />
+                <Sidebar />
             </div>
 
             {/* Main Content */}
