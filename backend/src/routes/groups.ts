@@ -170,12 +170,33 @@ router.get('/:id', async (req, res) => {
             .from(spreadsheets)
             .where(eq(spreadsheets.id, group[0].sheetId)) : [];
 
+        const { decrypt } = await import('../services/encryption.service.js');
+
+        const smtpConfig = await db
+            .select()
+            .from(groupSmtpConfig)
+            .where(eq(groupSmtpConfig.groupId, id));
+
+        let decryptedSmtpConfig = null;
+        if (smtpConfig[0]) {
+            decryptedSmtpConfig = { ...smtpConfig[0] };
+            if (decryptedSmtpConfig.smtpPassword) {
+                try {
+                    decryptedSmtpConfig.smtpPassword = decrypt(decryptedSmtpConfig.smtpPassword);
+                } catch (error) {
+                    console.error('Failed to decrypt SMTP password for group response:', error);
+                    decryptedSmtpConfig.smtpPassword = ''; // Clear if decryption fails
+                }
+            }
+        }
+
         res.json({
             success: true,
             data: {
                 ...group[0],
                 template,
                 sheet: sheet[0] || null,
+                smtpConfig: decryptedSmtpConfig,
                 certificateCount: certCount[0]?.count || 0,
             },
         });
@@ -488,13 +509,32 @@ router.post('/:id/settings/smtp/test', async (req, res) => {
 
         // Test SMTP connection using nodemailer
         const nodemailer = await import('nodemailer');
+        const { decrypt } = await import('../services/encryption.service.js');
+
+        let passwordToUse = smtpPassword;
+
+        // If no password provided, try to fetch saved config
+        if (!passwordToUse) {
+            const savedConfig = await db
+                .select()
+                .from(groupSmtpConfig)
+                .where(eq(groupSmtpConfig.groupId, id));
+
+            if (savedConfig[0] && savedConfig[0].smtpPassword) {
+                try {
+                    passwordToUse = decrypt(savedConfig[0].smtpPassword);
+                } catch (e) {
+                    console.error('Failed to decrypt saved password for test:', e);
+                }
+            }
+        }
 
         const transportConfig: any = {
             host: smtpHost,
             port: parseInt(smtpPort),
             auth: {
                 user: smtpEmail,
-                pass: smtpPassword,
+                pass: passwordToUse,
             },
         };
 

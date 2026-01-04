@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { db } from '../lib/db.js';
-import { groupSmtpConfig, groups, mailJobs, mailLogs } from '../db/schema.js';
+import { groupSmtpConfig, groups, mailJobs, mailLogs, certificates } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 import { decrypt } from './encryption.service.js';
 
@@ -29,6 +29,7 @@ interface EmailOptions {
 interface MailJobRecipient {
     email: string;
     name: string;
+    certificateId?: string;
     certificateUrl?: string;
     data: Record<string, string>;
 }
@@ -99,9 +100,10 @@ export class MailService {
         }
     }
 
-    replacePlaceholders(template: string, data: Record<string, string>): string {
+    replacePlaceholders(template: string, data: Record<string, string | undefined>): string {
         let result = template;
         for (const [key, value] of Object.entries(data)) {
+            if (value === undefined) continue;
             const regex = new RegExp(`\\{${key}\\}`, 'g');
             result = result.replace(regex, value);
         }
@@ -174,22 +176,57 @@ export class MailService {
         // Process each recipient with rate limiting
         for (const recipient of recipients) {
             try {
-                const subject = this.replacePlaceholders(group.emailSubject, {
-                    ...recipient.data,
-                    Name: recipient.name,
-                    Email: recipient.email,
-                });
+                // Prepare attachments and fetch certificate code
+                const attachments = [];
+                let certificateCode = '';
 
-                const html = this.replacePlaceholders(group.emailTemplateHtml, {
+                if (recipient.certificateId) {
+                    // Fetch certificate details
+                    const certParams = await db
+                        .select({
+                            code: certificates.certificateCode,
+                            filename: certificates.filename,
+                            fileUrl: certificates.fileUrl,
+                            filepath: certificates.filepath
+                        })
+                        .from(certificates)
+                        .where(eq(certificates.id, recipient.certificateId));
+
+                    if (certParams[0]) {
+                        const cert = certParams[0];
+                        certificateCode = cert.code;
+
+                        // Prioritize fileUrl (Cloud), fallback to filepath (Local)
+                        const path = cert.fileUrl || cert.filepath;
+                        if (path) {
+                            attachments.push({
+                                filename: cert.filename || 'certificate.pdf',
+                                path: path
+                            });
+                        }
+                    }
+                }
+
+                const variables = {
                     ...recipient.data,
                     Name: recipient.name,
+                    name: recipient.name, // Support lowercase
                     Email: recipient.email,
-                });
+                    email: recipient.email, // Support lowercase
+                    CertificateID: certificateCode || recipient.certificateId || '', // Prefer code
+                    certificateId: certificateCode || recipient.certificateId || '' // Support camelCase
+                };
+
+                const subject = this.replacePlaceholders(group.emailSubject, variables);
+                const html = this.replacePlaceholders(group.emailTemplateHtml, variables);
+
+
 
                 const result = await this.sendEmail(smtpConfig, {
                     to: recipient.email,
                     subject,
                     html,
+                    attachments
                 });
 
                 // Log the email

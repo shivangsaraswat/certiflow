@@ -206,6 +206,7 @@ export default function GroupMailPage() {
                 email: p.email,
                 name: p.name,
                 data: p.data,
+                certificateId: p.certificateId, // Pass this to backend for attachments
             }));
 
             const res = await fetch(`${baseUrl}/api/groups/${groupId}/mail/send`, {

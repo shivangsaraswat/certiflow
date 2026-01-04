@@ -32,7 +32,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
             <motion.div
                 initial={false}
                 animate={{
-                    width: isCollapsed ? 72 : 256,
+                    width: isCollapsed ? 68 : 240,
                 }}
                 // Disable animation on first render if needed, or keep it smooth but ensure start state is correct
                 transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
@@ -47,7 +47,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
             <motion.div
                 initial={false}
                 animate={{
-                    paddingLeft: isCollapsed ? 72 : 256,
+                    paddingLeft: isCollapsed ? 68 : 240,
                 }}
                 transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                 className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden"

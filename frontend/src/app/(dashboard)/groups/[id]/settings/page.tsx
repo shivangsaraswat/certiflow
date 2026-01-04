@@ -14,6 +14,7 @@ import {
     RefreshCw,
     Columns,
     Eye,
+    EyeOff,
     Code,
     LayoutTemplate
 } from 'lucide-react';
@@ -96,6 +97,7 @@ export default function GroupSettingsPage() {
     });
     const [isSavingSmtp, setIsSavingSmtp] = useState(false);
     const [isTestingSmtp, setIsTestingSmtp] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     // Email Template state
     const [emailSubject, setEmailSubject] = useState('');
@@ -163,7 +165,7 @@ export default function GroupSettingsPage() {
                         smtpHost: gData.smtpConfig.smtpHost || '',
                         smtpPort: gData.smtpConfig.smtpPort?.toString() || '587',
                         smtpEmail: gData.smtpConfig.smtpEmail || '',
-                        smtpPassword: '',
+                        smtpPassword: gData.smtpConfig.smtpPassword || '',
                         encryptionType: gData.smtpConfig.encryptionType || 'TLS',
                         senderName: gData.smtpConfig.senderName || '',
                         replyTo: gData.smtpConfig.replyTo || '',
@@ -678,7 +680,22 @@ export default function GroupSettingsPage() {
                                 <CardContent className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>SMTP Host</Label>
+                                            <div className="flex justify-between items-center">
+                                                <Label>SMTP Host</Label>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-auto p-0 text-xs text-primary hover:bg-transparent"
+                                                    onClick={() => setSmtpConfig(p => ({
+                                                        ...p,
+                                                        smtpHost: 'smtp.gmail.com',
+                                                        smtpPort: '587',
+                                                        encryptionType: 'TLS'
+                                                    }))}
+                                                >
+                                                    Use Gmail Defaults
+                                                </Button>
+                                            </div>
                                             <Input value={smtpConfig.smtpHost} onChange={e => setSmtpConfig(p => ({ ...p, smtpHost: e.target.value }))} placeholder="smtp.gmail.com" />
                                         </div>
                                         <div className="space-y-2">
@@ -692,7 +709,31 @@ export default function GroupSettingsPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label>App Password</Label>
-                                        <Input value={smtpConfig.smtpPassword} onChange={e => setSmtpConfig(p => ({ ...p, smtpPassword: e.target.value }))} type="password" placeholder="••••••••" />
+                                        <div className="relative">
+                                            <Input
+                                                value={smtpConfig.smtpPassword}
+                                                onChange={e => setSmtpConfig(p => ({ ...p, smtpPassword: e.target.value }))}
+                                                type={showPassword ? "text" : "password"}
+                                                placeholder="••••••••"
+                                                className="pr-10"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                            >
+                                                {showPassword ? (
+                                                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                                ) : (
+                                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                                )}
+                                                <span className="sr-only">
+                                                    {showPassword ? "Hide password" : "Show password"}
+                                                </span>
+                                            </Button>
+                                        </div>
                                         <p className="text-xs text-muted-foreground">Use an App Password if using Gmail/Outlook.</p>
                                     </div>
                                     <div className="space-y-2">
@@ -743,13 +784,42 @@ export default function GroupSettingsPage() {
                                     </div>
 
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-sm text-muted-foreground">Variables:</span>
-                                        {['Name', 'Email', 'CertificateID'].map(v => (
-                                            <Button key={v} variant="secondary" size="sm" className="h-6 text-xs px-2" onClick={() => insertVariable(v)}>{`{${v}}`}</Button>
-                                        ))}
-                                        {selectedTemplate?.attributes.filter(a => a.id !== 'certificateId').map(attr => (
-                                            <Button key={attr.id} variant="secondary" size="sm" className="h-6 text-xs px-2" onClick={() => insertVariable(attr.name)}>{`{${attr.name}}`}</Button>
-                                        ))}
+                                        <span className="text-sm text-muted-foreground mr-2">Available Variables:</span>
+
+                                        {/* Certificate ID is always available */}
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            className="h-6 text-xs px-2 font-mono text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                                            onClick={() => insertVariable('CertificateID')}
+                                        >
+                                            {`{CertificateID}`}
+                                        </Button>
+
+                                        {/* Dynamically show mapped columns from spreadsheet */}
+                                        {Object.entries(columnMapping).map(([key, mappedCol]) => {
+                                            // Find the attribute name if it's mapped to a template field
+                                            let varName = mappedCol; // Default to column name
+
+                                            // If mapped to 'email', use 'Email'
+                                            if (key === 'email') varName = 'Email';
+                                            else {
+                                                const attr = selectedTemplate?.attributes.find(a => a.id === key);
+                                                if (attr) varName = attr.name;
+                                            }
+
+                                            return (
+                                                <Button
+                                                    key={key}
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    className="h-6 text-xs px-2 font-mono"
+                                                    onClick={() => insertVariable(varName)}
+                                                >
+                                                    {`{${varName}}`}
+                                                </Button>
+                                            );
+                                        })}
                                     </div>
 
                                     <Tabs value={emailPreviewMode} onValueChange={(v) => setEmailPreviewMode(v as 'edit' | 'preview')}>

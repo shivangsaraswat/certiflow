@@ -69,7 +69,7 @@ export function Header() {
                         <span className="sr-only">Toggle menu</span>
                     </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[280px] p-0 border-r-0">
+                <SheetContent side="left" className="w-[260px] p-0 border-r-0">
                     <Sidebar forceExpand={true} />
                 </SheetContent>
             </Sheet>
