@@ -7,6 +7,7 @@ type SidebarContextType = {
     toggleSidebar: () => void;
     collapseSidebar: () => void;
     expandSidebar: () => void;
+    isMounted: boolean;
 };
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
@@ -45,7 +46,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
                 isCollapsed,
                 toggleSidebar,
                 collapseSidebar,
-                expandSidebar
+                expandSidebar,
+                isMounted
             }}
         >
             {children}

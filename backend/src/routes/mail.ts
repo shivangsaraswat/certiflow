@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { db } from '../lib/db.js';
-import { groups, mailJobs, mailLogs, spreadsheets, spreadsheetData } from '../db/schema.js';
+import { groups, mailJobs, mailLogs, spreadsheets, spreadsheetData, certificates } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { mailService } from '../services/mail.service.js';
 
@@ -187,97 +187,70 @@ router.get('/:groupId/mail/participants', async (req, res) => {
         }
 
         const group = groupData[0];
-        if (!group.sheetId) {
-            return res.status(400).json({ success: false, error: 'No data vault connected' });
-        }
 
-        // Get spreadsheet info
-        const sheetInfo = await db
-            .select()
-            .from(spreadsheets)
-            .where(eq(spreadsheets.id, group.sheetId));
+        // Fetch participants from generated certificates instead of spreadsheet
+        const certs = await db
+            .select({
+                id: certificates.id,
+                name: certificates.recipientName,
+                email: certificates.recipientEmail,
+                data: certificates.data
+            })
+            .from(certificates)
+            .where(eq(certificates.groupId, groupId))
+            .orderBy(desc(certificates.createdAt));
 
-        if (!sheetInfo[0]) {
-            return res.status(404).json({ success: false, error: 'Spreadsheet not found' });
-        }
-
-        // Get spreadsheet data from separate table
-        const sheetDataResult = await db
-            .select()
-            .from(spreadsheetData)
-            .where(eq(spreadsheetData.spreadsheetId, group.sheetId));
-
-        if (!sheetDataResult[0]) {
-            return res.json({ success: true, data: [], headers: [] });
-        }
-
-        // Parse FortuneSheet content to extract rows
-        const content = sheetDataResult[0].content as any;
-        let data: any[][] = [];
-
-        // FortuneSheet stores data in celldata format or as sheets array
-        if (Array.isArray(content) && content[0]?.celldata) {
-            // Extract from FortuneSheet format
-            const celldata = content[0].celldata;
-            const maxRow = Math.max(...celldata.map((c: any) => c.r)) + 1;
-            const maxCol = Math.max(...celldata.map((c: any) => c.c)) + 1;
-
-            // Initialize grid
-            for (let i = 0; i < maxRow; i++) {
-                data[i] = new Array(maxCol).fill('');
-            }
-
-            // Fill in values
-            celldata.forEach((cell: any) => {
-                if (cell.v?.v !== undefined) {
-                    data[cell.r][cell.c] = cell.v.v;
-                } else if (cell.v?.m !== undefined) {
-                    data[cell.r][cell.c] = cell.v.m;
-                }
-            });
-        } else if (Array.isArray(content)) {
-            data = content;
-        }
-
-        if (data.length < 2) {
-            return res.json({ success: true, data: [], headers: [] });
-        }
-
-        const headers = data[0] as string[];
-        const columnMapping = group.columnMapping as Record<string, string> || {};
-
-        // Map rows to participants
-        const participants = data.slice(1).map((row, index) => {
-            const rowData: Record<string, string> = {};
-            headers.forEach((header, i) => {
-                if (header) {
-                    rowData[header] = row[i]?.toString() || '';
-                }
-            });
-
-            // Get email and name from mapping
-            const emailColumn = columnMapping['email'];
-            const nameColumn = Object.entries(columnMapping).find(([key]) =>
-                key.toLowerCase().includes('name')
-            )?.[1];
-
-            return {
-                id: index + 1,
-                email: emailColumn ? rowData[emailColumn] : '',
-                name: nameColumn ? rowData[nameColumn] : '',
-                data: rowData,
-            };
-        }).filter(p => p.email); // Only include rows with email
+        const participants = certs
+            .filter(c => c.email && c.email.trim() !== '')
+            .map((c, index) => ({
+                id: index + 1, // Frontend expects number ID for selection
+                email: c.email!,
+                name: c.name,
+                data: (c.data as Record<string, string>) || {},
+                certificateId: c.id // Keep track of the certificate ID
+            }));
 
         res.json({
             success: true,
             data: participants,
-            headers: headers.filter(Boolean),
-            columnMapping,
+            headers: ['Name', 'Email'], // Simplified headers
+            columnMapping: { email: 'Email', name: 'Name' }, // Mock mapping
         });
+
     } catch (error: any) {
-        console.error('Error getting participants:', error);
+        console.error('Error getting participants from certificates:', error);
         res.status(500).json({ success: false, error: 'Failed to get participants' });
+    }
+});
+
+/**
+ * DELETE /api/groups/:groupId/mail/history/:logId - Delete a mail log entry
+ */
+router.delete('/:groupId/mail/history/:logId', async (req, res) => {
+    try {
+        const { groupId, logId } = req.params;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Delete the log entry
+        await db
+            .delete(mailLogs)
+            .where(sql`${mailLogs.id} = ${logId} AND ${mailLogs.groupId} = ${groupId}`);
+
+        res.json({ success: true, message: 'Log entry deleted' });
+    } catch (error: any) {
+        console.error('Error deleting mail log:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete log entry' });
     }
 });
 

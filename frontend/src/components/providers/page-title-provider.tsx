@@ -3,8 +3,8 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 
 interface PageTitleContextType {
-    title: string | null;
-    setPageTitle: (title: string | null) => void;
+    title: ReactNode | string | null;
+    setPageTitle: (title: ReactNode | string | null) => void;
     actions: ReactNode | null;
     setActions: (actions: ReactNode | null) => void;
     backButton: ReactNode | null;
@@ -14,7 +14,7 @@ interface PageTitleContextType {
 const PageTitleContext = createContext<PageTitleContextType | undefined>(undefined);
 
 export function PageTitleProvider({ children }: { children: ReactNode }) {
-    const [title, setTitle] = useState<string | null>(null);
+    const [title, setTitle] = useState<ReactNode | string | null>(null);
     const [actions, setActions] = useState<ReactNode | null>(null);
     const [backButton, setBackButton] = useState<ReactNode | null>(null);
 
