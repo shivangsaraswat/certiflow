@@ -14,6 +14,7 @@ import { LoadingPage } from '@/components/shared/loading-spinner';
 import { getTemplates, deleteTemplate } from '@/lib/api';
 import { useSession } from 'next-auth/react';
 import type { Template } from '@/types';
+import { usePageTitle } from '@/components/providers/page-title-provider';
 
 export default function TemplatesPage() {
     const [templates, setTemplates] = useState<Template[]>([]);
@@ -41,9 +42,29 @@ export default function TemplatesPage() {
         }
     }, [userId]);
 
+    const { setActions } = usePageTitle();
+
     useEffect(() => {
         loadTemplates();
     }, [loadTemplates]);
+
+    useEffect(() => {
+        setActions(
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={loadTemplates} className="h-8">
+                    <RefreshCw className="mr-2 h-3 w-3" />
+                    Refresh
+                </Button>
+                <Link href="/templates/new">
+                    <Button size="sm" className="h-8">
+                        <Plus className="mr-2 h-3 w-3" />
+                        Upload Template
+                    </Button>
+                </Link>
+            </div>
+        );
+        return () => setActions(null);
+    }, [loadTemplates, setActions]);
 
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to delete this template?')) return;
@@ -66,19 +87,7 @@ export default function TemplatesPage() {
 
     return (
         <div className="space-y-6">
-            {/* Action Bar */}
-            <div className="flex items-center justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={loadTemplates} className="h-8">
-                    <RefreshCw className="mr-2 h-3 w-3" />
-                    Refresh
-                </Button>
-                <Link href="/templates/new">
-                    <Button size="sm" className="h-8">
-                        <Plus className="mr-2 h-3 w-3" />
-                        Upload Template
-                    </Button>
-                </Link>
-            </div>
+            <div className="h-4" />
 
             {/* Error Display */}
             {error && (

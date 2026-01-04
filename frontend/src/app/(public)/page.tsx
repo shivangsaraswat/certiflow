@@ -79,7 +79,7 @@ export default function LandingPage() {
                             <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                                 <Database className="h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-semibold">Data Vault</h3>
+                            <h3 className="text-xl font-semibold">Dataset</h3>
                             <p className="text-muted-foreground">Securely store and manage your recipient data. Reuse it across campaigns.</p>
                         </div>
                         <div className="bg-card border p-6 rounded-xl space-y-4 shadow-sm hover:shadow-md transition-shadow">

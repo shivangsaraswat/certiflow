@@ -24,7 +24,7 @@ import { FileUpload } from '@/components/shared/file-upload';
 import { LoadingSpinner, LoadingPage } from '@/components/shared/loading-spinner';
 import { getSignatures, uploadSignature, deleteSignature, getViewUrl } from '@/lib/api';
 import type { Signature } from '@/types';
-
+import { usePageTitle } from '@/components/providers/page-title-provider';
 import { useSession } from 'next-auth/react';
 
 export default function SignaturesPage() {
@@ -35,6 +35,7 @@ export default function SignaturesPage() {
     const [isUploading, setIsUploading] = useState(false);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { setActions } = usePageTitle();
 
     // Form state
     const [signatureName, setSignatureName] = useState('');
@@ -61,11 +62,7 @@ export default function SignaturesPage() {
         }
     }, []);
 
-    useEffect(() => {
-        if (userId) loadSignatures();
-    }, [loadSignatures, userId]);
-
-    const handleUpload = async () => {
+    const handleUpload = useCallback(async () => {
         if (!signatureName.trim() || !signatureFile) return;
 
         setIsUploading(true);
@@ -90,9 +87,9 @@ export default function SignaturesPage() {
         } finally {
             setIsUploading(false);
         }
-    };
+    }, [signatureName, signatureFile, userId, setIsDialogOpen, setSignatureName, setSignatureFile]);
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = useCallback(async (id: string) => {
         if (!confirm('Are you sure you want to delete this signature?')) return;
 
         try {
@@ -105,7 +102,85 @@ export default function SignaturesPage() {
         } catch {
             alert('Failed to delete signature');
         }
-    };
+    }, [userId]);
+
+    useEffect(() => {
+        if (userId) loadSignatures();
+    }, [loadSignatures, userId]);
+
+    useEffect(() => {
+        setActions(
+            <div className="flex gap-2">
+                <Button variant="outline" size="icon" onClick={loadSignatures}>
+                    <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Upload Signature
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Upload Signature</DialogTitle>
+                            <DialogDescription>
+                                Upload a signature image to use in certificates
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Signature Name</Label>
+                                <Input
+                                    id="name"
+                                    placeholder="e.g., CEO Signature"
+                                    value={signatureName}
+                                    onChange={(e) => setSignatureName(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Signature Image</Label>
+                                <FileUpload
+                                    accept=".png,.jpg,.jpeg"
+                                    onFileSelect={setSignatureFile}
+                                    value={signatureFile}
+                                    maxSize={5 * 1024 * 1024}
+                                />
+                            </div>
+                            {error && (
+                                <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => setIsDialogOpen(false)}
+                                disabled={isUploading}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleUpload}
+                                disabled={!signatureName.trim() || !signatureFile || isUploading}
+                            >
+                                {isUploading ? (
+                                    <>
+                                        <LoadingSpinner size="sm" className="mr-2" />
+                                        Uploading...
+                                    </>
+                                ) : (
+                                    'Upload'
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        );
+        return () => setActions(null);
+    }, [loadSignatures, isDialogOpen, setIsDialogOpen, signatureName, signatureFile, error, isUploading, handleUpload, setActions]);
 
     if (isLoading) {
         return <LoadingPage message="Loading signatures..." />;
@@ -113,83 +188,8 @@ export default function SignaturesPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold">Signatures</h1>
-                    <p className="text-muted-foreground">
-                        Manage signature images for certificates
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" size="icon" onClick={loadSignatures}>
-                        <RefreshCw className="h-4 w-4" />
-                    </Button>
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Upload Signature
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Upload Signature</DialogTitle>
-                                <DialogDescription>
-                                    Upload a signature image to use in certificates
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Signature Name</Label>
-                                    <Input
-                                        id="name"
-                                        placeholder="e.g., CEO Signature"
-                                        value={signatureName}
-                                        onChange={(e) => setSignatureName(e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Signature Image</Label>
-                                    <FileUpload
-                                        accept=".png,.jpg,.jpeg"
-                                        onFileSelect={setSignatureFile}
-                                        value={signatureFile}
-                                        maxSize={5 * 1024 * 1024}
-                                    />
-                                </div>
-                                {error && (
-                                    <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                                        {error}
-                                    </div>
-                                )}
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setIsDialogOpen(false)}
-                                    disabled={isUploading}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    onClick={handleUpload}
-                                    disabled={!signatureName.trim() || !signatureFile || isUploading}
-                                >
-                                    {isUploading ? (
-                                        <>
-                                            <LoadingSpinner size="sm" className="mr-2" />
-                                            Uploading...
-                                        </>
-                                    ) : (
-                                        'Upload'
-                                    )}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                </div>
-            </div>
+            {/* Header placeholder - actions are now in the page header */}
+            <div className="h-4" />
 
             {/* Error Display */}
             {error && !isDialogOpen && (

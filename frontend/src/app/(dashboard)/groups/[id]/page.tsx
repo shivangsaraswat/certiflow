@@ -55,6 +55,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useSession } from 'next-auth/react';
+import { useGroupContext } from './layout';
 
 export default function GroupDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -67,35 +68,19 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
     const [loading, setLoading] = useState(true);
     const [loadingCerts, setLoadingCerts] = useState(false);
 
-    // Generation dialogs
-    const [isSingleDialogOpen, setIsSingleDialogOpen] = useState(false);
-    const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
+    // Generation dialogs - controlled by layout context
+    const { isSingleDialogOpen, setIsSingleDialogOpen, isBulkDialogOpen, setIsBulkDialogOpen, refreshGroup } = useGroupContext();
     const [formData, setFormData] = useState<Record<string, string>>({});
     const [recipientEmail, setRecipientEmail] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
 
     // Bulk generation state
-    const [bulkStep, setBulkStep] = useState<1 | 2 | 3>(1); // 1: Source, 2: Mapping, 3: Processing/Results
-    const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
-    const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
     const [bulkJobId, setBulkJobId] = useState<string | null>(null);
     const [bulkStatus, setBulkStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
     const [bulkResult, setBulkResult] = useState<any>(null);
-    const [loadingHeaders, setLoadingHeaders] = useState(false);
 
     // Delete Confirmation
     const [deleteId, setDeleteId] = useState<string | null>(null);
-
-    // Page Title Context
-    const { setPageTitle } = usePageTitle();
-
-    // Set page title when group is loaded
-    useEffect(() => {
-        if (group) {
-            setPageTitle(group.name);
-        }
-        return () => setPageTitle(null);
-    }, [group, setPageTitle]);
 
     const loadGroup = useCallback(async () => {
         if (!userId) return;
@@ -103,16 +88,20 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         const result = await getGroup(id, userId);
         if (result.success && result.data) {
             setGroup(result.data);
-            // Load template details
-            const tplRes = await getTemplate(result.data.templateId, userId);
-            if (tplRes.success && tplRes.data) {
-                setTemplate(tplRes.data);
-                // Initialize form data
-                const initial: Record<string, string> = {};
-                tplRes.data.attributes.forEach((attr: DynamicAttribute) => {
-                    initial[attr.id] = '';
-                });
-                setFormData(initial);
+            // Load template details only if template is configured
+            if (result.data.templateId) {
+                const tplRes = await getTemplate(result.data.templateId, userId);
+                if (tplRes.success && tplRes.data) {
+                    setTemplate(tplRes.data);
+                    // Initialize form data
+                    const initial: Record<string, string> = {};
+                    tplRes.data.attributes.forEach((attr: DynamicAttribute) => {
+                        initial[attr.id] = '';
+                    });
+                    setFormData(initial);
+                }
+            } else {
+                setTemplate(null);
             }
         }
         setLoading(false);
@@ -136,10 +125,10 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         }
     }, [loadGroup, loadCertificates, userId]);
 
-    const handleRefresh = () => {
+    const handleRefresh = useCallback(() => {
         loadGroup();
         loadCertificates();
-    };
+    }, [loadGroup, loadCertificates]);
 
     const handleSingleGenerate = async () => {
         if (!template || !group) return;
@@ -178,90 +167,30 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
     };
 
     // Bulk Generation Logic
-    const loadSheetHeaders = async () => {
-        if (!group?.sheetId) return;
-
-        setLoadingHeaders(true);
-        try {
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const sheetRes = await fetch(`${baseUrl}/api/spreadsheets/${group.sheetId}`, {
-                headers: { 'x-user-id': userId || '' }
-            });
-            const sheetData = await sheetRes.json();
-
-            if (sheetData.success && sheetData.data?.content) {
-                const sheet = sheetData.data.content[0]; // Get first sheet
-                const headers: string[] = [];
-
-                if (sheet) {
-                    // Extract headers logic
-                    if (sheet.celldata && Array.isArray(sheet.celldata)) {
-                        const row0Cells = sheet.celldata.filter((c: any) => c.r === 0);
-                        row0Cells.forEach((cell: any) => {
-                            if (cell.v?.v || cell.v?.m) {
-                                headers[cell.c] = String(cell.v?.m || cell.v?.v);
-                            }
-                        });
-                    } else if (sheet.data && Array.isArray(sheet.data)) {
-                        if (sheet.data[0] && Array.isArray(sheet.data[0])) {
-                            sheet.data[0].forEach((cell: any, idx: number) => {
-                                if (cell?.v !== undefined || typeof cell === 'string') {
-                                    headers[idx] = cell?.v !== undefined ? String(cell.v) : (typeof cell === 'string' ? cell : '');
-                                }
-                            });
-                        }
-                    }
-                }
-
-                const cleanHeaders = headers.filter(h => h);
-                setSheetHeaders(cleanHeaders);
-
-                // Auto-mapping
-                const initialMapping: Record<string, string> = {};
-                if (template) {
-                    template.attributes.forEach(attr => {
-                        // Specific check for email
-                        if (attr.name.toLowerCase().includes('email')) {
-                            const emailHeader = cleanHeaders.find(h =>
-                                h.toLowerCase() === 'email' ||
-                                h.toLowerCase() === 'e-mail' ||
-                                h.toLowerCase() === 'mail' ||
-                                h.toLowerCase().includes('email')
-                            );
-                            if (emailHeader) initialMapping[attr.id] = emailHeader;
-                        } else {
-                            const matchingHeader = cleanHeaders.find(h =>
-                                h.toLowerCase() === attr.name.toLowerCase() ||
-                                h.toLowerCase().includes(attr.name.toLowerCase())
-                            );
-                            if (matchingHeader) initialMapping[attr.id] = matchingHeader;
-                        }
-                    });
-                }
-                setColumnMapping(initialMapping);
-            }
-        } catch (err) {
-            toast.error('Failed to load spreadsheet headers');
-        } finally {
-            setLoadingHeaders(false);
-        }
-    };
 
     useEffect(() => {
-        if (isBulkDialogOpen && bulkStep === 1) {
+        if (isBulkDialogOpen) {
             // Reset state when opening
             setBulkStatus('idle');
             setBulkJobId(null);
             setBulkResult(null);
         }
-    }, [isBulkDialogOpen, bulkStep]);
+    }, [isBulkDialogOpen]);
 
     const handleBulkStart = async () => {
         if (!group?.sheetId) return;
 
+        // Use stored column mapping
+        const storedMapping = group.columnMapping as Record<string, string>;
+
+        if (!storedMapping || Object.keys(storedMapping).length === 0) {
+            toast.error('Please configure Dataset settings first');
+            return;
+        }
+
         // Validate required fields (exclude system attributes like certificateId)
         const missing = template?.attributes
-            .filter(a => a.id !== 'certificateId' && a.required && !columnMapping[a.id])
+            .filter(a => a.id !== 'certificateId' && a.required && !storedMapping[a.id])
             .map(a => a.name);
 
         if (missing && missing.length > 0) {
@@ -269,23 +198,17 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
             return;
         }
 
-        setBulkStep(3);
         setBulkStatus('processing');
 
         try {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const formData = new FormData();
-            formData.append('templateId', group.templateId);
-            // Invert mapping for backend: sourceColumn -> attrId (logic in backend may vary, checking logic...)
-            // Actually backend expects: columnMapping object/json
-            // Code review of existing bulk upload: backend expects JSON string where keys are Source Columns and Values are Attr IDs? 
-            // WAIT, looking at existing backend logic: 
-            // `for (const [sourceColumn, attrId] of Object.entries(columnMapping))`
-            // So we need { "Source Col": "Attr ID" }
+            formData.append('templateId', group.templateId || '');
 
+            // Invert mapping for backend: { sourceCol: attrId }
+            // Stored mapping is { attrId: sourceCol }
             const backendMapping: Record<string, string> = {};
-            // Flip our frontend mapping: { attrId: sourceCol } -> { sourceCol: attrId }
-            Object.entries(columnMapping).forEach(([attrId, sourceCol]) => {
+            Object.entries(storedMapping).forEach(([attrId, sourceCol]) => {
                 if (sourceCol && sourceCol !== '__skip__') {
                     backendMapping[sourceCol] = attrId;
                 }
@@ -347,7 +270,6 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
 
     const resetBulkDialog = () => {
         setBulkStatus('idle');
-        setBulkStep(1);
         setBulkJobId(null);
         setBulkResult(null);
         setIsBulkDialogOpen(false);
@@ -372,47 +294,30 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         );
     }
 
+    // If template is not configured, prompt to configure settings
+    if (!group.templateId) {
+        return (
+            <div className="space-y-6">
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-medium">Configuration Required</h3>
+                        <p className="text-muted-foreground mt-1 mb-4 max-w-md">
+                            Before you can generate certificates, you need to configure a template and data source for this group.
+                        </p>
+                        <Button asChild>
+                            <Link href={`/groups/${id}/settings`}>
+                                Configure Group
+                            </Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" asChild>
-                        <Link href="/groups">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Link>
-                    </Button>
-
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="outline" onClick={handleRefresh}>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Refresh
-                    </Button>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Generate
-                                <ChevronDown className="ml-2 h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setIsSingleDialogOpen(true)}>
-                                <User className="mr-2 h-4 w-4" />
-                                Single Certificate
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setIsBulkDialogOpen(true)}>
-                                <Users className="mr-2 h-4 w-4" />
-                                Bulk from Data Vault
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </div>
-            </div>
-
-
-
             {/* Stats */}
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>
@@ -478,7 +383,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setIsBulkDialogOpen(true)}>
                                         <Users className="mr-2 h-4 w-4" />
-                                        Bulk from Data Vault
+                                        Bulk from Dataset
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -600,196 +505,162 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
 
             {/* Bulk Generation Dialog */}
             <Dialog open={isBulkDialogOpen} onOpenChange={(open) => !open && resetBulkDialog()}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-xl">
                     <DialogHeader>
-                        <DialogTitle>Bulk Generate from Data Vault</DialogTitle>
+                        <DialogTitle>Bulk Generate Certificates</DialogTitle>
                         <DialogDescription>
-                            Generate certificates for records in the linked spreadsheet
+                            Generate certificates using the connected Dataset
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="py-4">
-                        {/* Steps Indicator */}
-                        <div className="flex items-center justify-center mb-8">
-                            <div className={`flex items-center gap-2 ${bulkStep >= 1 ? 'text-primary' : 'text-muted-foreground'}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${bulkStep >= 1 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted'}`}>1</div>
-                                <span className="font-medium text-sm">Source</span>
-                            </div>
-                            <div className={`w-12 h-0.5 mx-2 ${bulkStep >= 2 ? 'bg-primary' : 'bg-muted'}`} />
-                            <div className={`flex items-center gap-2 ${bulkStep >= 2 ? 'text-primary' : 'text-muted-foreground'}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${bulkStep >= 2 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted'}`}>2</div>
-                                <span className="font-medium text-sm">Mapping</span>
-                            </div>
-                            <div className={`w-12 h-0.5 mx-2 ${bulkStep >= 3 ? 'bg-primary' : 'bg-muted'}`} />
-                            <div className={`flex items-center gap-2 ${bulkStep >= 3 ? 'text-primary' : 'text-muted-foreground'}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${bulkStep >= 3 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted'}`}>3</div>
-                                <span className="font-medium text-sm">Processing</span>
-                            </div>
-                        </div>
-
-                        {/* Step 1: Source */}
-                        {bulkStep === 1 && (
-                            <div className="space-y-4">
-                                <div className="border rounded-lg p-4 bg-muted/20">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                                            <FileSpreadsheet className="h-6 w-6 text-green-700" />
-                                        </div>
-                                        <div>
-                                            <h4 className="font-medium">{group.sheet?.name || 'Linked Spreadsheet'}</h4>
-                                            {group?.sheetId ? (
-                                                <p className="text-sm text-green-600 flex items-center gap-1">
-                                                    <CheckCircle2 className="h-3 w-3" /> Ready for generation
-                                                </p>
-                                            ) : (
-                                                <p className="text-sm text-destructive flex items-center gap-1">
-                                                    <AlertCircle className="h-3 w-3" /> No spreadsheet linked
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <Alert>
-                                    <AlertCircle className="h-4 w-4" />
-                                    <AlertTitle>Note</AlertTitle>
-                                    <AlertDescription>
-                                        Make sure your spreadsheet has headers in the first row. We'll use these headers to map data to your template placeholders.
-                                    </AlertDescription>
-                                </Alert>
-                            </div>
-                        )}
-
-                        {/* Step 2: Mapping */}
-                        {bulkStep === 2 && (
-                            <div className="space-y-4">
-                                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                                    {template?.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
-                                        <div key={attr.id} className="grid grid-cols-2 gap-4 items-center p-3 border rounded-lg">
-                                            <div>
-                                                <p className="text-sm font-medium">{attr.name}</p>
-                                                <p className="text-xs text-muted-foreground">{attr.placeholder}</p>
-                                                {attr.required && (
-                                                    <span className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded mt-1 inline-block">REQUIRED</span>
-                                                )}
-                                            </div>
-                                            {sheetHeaders.length > 0 ? (
-                                                <select
-                                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                                    value={columnMapping[attr.id] || '__skip__'}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setColumnMapping(prev => {
-                                                            if (val === '__skip__') {
-                                                                const { [attr.id]: _, ...rest } = prev;
-                                                                return rest;
-                                                            }
-                                                            return { ...prev, [attr.id]: val };
-                                                        });
-                                                    }}
-                                                >
-                                                    <option value="__skip__">-- Skip --</option>
-                                                    {sheetHeaders.map(h => (
-                                                        <option key={h} value={h}>{h}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <div className="text-sm text-destructive flex items-center gap-1">
-                                                    <AlertCircle className="h-3 w-3" /> No columns found
+                        {/* Configuration Check */}
+                        {bulkStatus === 'idle' && (
+                            <div className="space-y-6">
+                                {group?.sheetId && group?.columnMapping && Object.keys(group.columnMapping).length > 0 ? (
+                                    <>
+                                        <div className="bg-green-50 border border-green-100 rounded-lg p-4">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                    <CheckCircle2 className="h-5 w-5 text-green-600" />
                                                 </div>
-                                            )}
+                                                <div>
+                                                    <h4 className="font-medium text-green-900">Ready to Generate</h4>
+                                                    <p className="text-sm text-green-700">
+                                                        Connected to <strong>{group.sheet?.name || 'Spreadsheet'}</strong>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-green-800 pl-[52px]">
+                                                {Object.keys(group.columnMapping).length} columns mapped.
+                                                Click start to process all records.
+                                            </p>
                                         </div>
-                                    ))}
+
+                                        <Alert>
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertTitle>Note</AlertTitle>
+                                            <AlertDescription>
+                                                This will generate certificates for all valid rows in the spreadsheet.
+                                                Existing certificates for the same recipients may be updated or skipped based on settings.
+                                            </AlertDescription>
+                                        </Alert>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-6 space-y-4">
+                                        <div className="bg-orange-50 border border-orange-100 rounded-lg p-6 max-w-sm mx-auto">
+                                            <AlertCircle className="h-10 w-10 text-orange-500 mx-auto mb-3" />
+                                            <h4 className="font-medium text-orange-900">Configuration Required</h4>
+                                            <p className="text-sm text-orange-700 mt-1">
+                                                Please configure the Dataset and map columns in the Settings tab before running bulk generation.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Processing Status */}
+                        {bulkStatus === 'processing' && (
+                            <div className="space-y-6 text-center py-4">
+                                <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+                                <div>
+                                    <h3 className="text-lg font-medium">Generating Certificates...</h3>
+                                    <p className="text-muted-foreground text-sm mt-1">
+                                        Please wait while we process your request.
+                                    </p>
+                                </div>
+                                <div className="max-w-xs mx-auto space-y-2">
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Progress</span>
+                                        <span>{bulkResult?.totalRequested ? Math.round(((bulkResult.successful + bulkResult.failed) / bulkResult.totalRequested) * 100) : 0}%</span>
+                                    </div>
+                                    <Progress
+                                        value={bulkResult?.totalRequested ? ((bulkResult.successful + bulkResult.failed) / bulkResult.totalRequested) * 100 : 0}
+                                        className="h-2"
+                                    />
+                                    <p className="text-xs text-muted-foreground pt-1">
+                                        Processed {bulkResult?.successful + bulkResult?.failed || 0} / {bulkResult?.totalRequested || '...'} records
+                                    </p>
                                 </div>
                             </div>
                         )}
 
-                        {/* Step 3: Processing */}
-                        {bulkStep === 3 && (
-                            <div className="space-y-6 text-center">
-                                {bulkStatus === 'processing' && (
-                                    <div className="py-8">
-                                        <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-                                        <h3 className="text-lg font-medium">Generating Certificates...</h3>
-                                        <p className="text-muted-foreground text-sm mt-2">
-                                            Processed {bulkResult?.successful + bulkResult?.failed || 0} / {bulkResult?.totalRequested || '...'} records
-                                        </p>
-                                        <Progress
-                                            value={bulkResult?.totalRequested ? ((bulkResult.successful + bulkResult.failed) / bulkResult.totalRequested) * 100 : 0}
-                                            className="h-2 w-64 mx-auto mt-4"
-                                        />
+                        {/* Results */}
+                        {bulkStatus === 'completed' && (
+                            <div className="py-4">
+                                <div className="text-center mb-6">
+                                    <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+                                        <Award className="h-6 w-6 text-green-600" />
                                     </div>
-                                )}
+                                    <h3 className="text-lg font-medium">Generation Complete!</h3>
+                                </div>
 
-                                {bulkStatus === 'completed' && (
-                                    <div className="py-8">
-                                        <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-                                            <Award className="h-6 w-6 text-green-600" />
-                                        </div>
-                                        <h3 className="text-lg font-medium">Generation Complete!</h3>
-                                        <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto mt-6">
-                                            <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-                                                <p className="text-2xl font-bold text-green-600">{bulkResult?.successful || 0}</p>
-                                                <p className="text-xs text-green-600 font-medium uppercase">Successful</p>
-                                            </div>
-                                            <div className="bg-red-50 p-3 rounded-lg border border-red-100">
-                                                <p className="text-2xl font-bold text-red-600">{bulkResult?.failed || 0}</p>
-                                                <p className="text-xs text-red-600 font-medium uppercase">Failed</p>
-                                            </div>
-                                        </div>
+                                <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto mb-6">
+                                    <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
+                                        <p className="text-3xl font-bold text-green-600 mb-1">{bulkResult?.successful || 0}</p>
+                                        <p className="text-xs text-green-700 font-semibold uppercase tracking-wider">Successful</p>
                                     </div>
-                                )}
-
-                                {bulkStatus === 'failed' && (
-                                    <div className="py-8 text-destructive">
-                                        <AlertCircle className="h-10 w-10 mx-auto mb-4" />
-                                        <h3 className="text-lg font-medium">Generation Failed</h3>
-                                        <p className="text-sm mt-2">Something went wrong during the process.</p>
+                                    <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center">
+                                        <p className="text-3xl font-bold text-red-600 mb-1">{bulkResult?.failed || 0}</p>
+                                        <p className="text-xs text-red-700 font-semibold uppercase tracking-wider">Failed</p>
                                     </div>
-                                )}
+                                </div>
 
                                 {bulkResult?.errors && bulkResult.errors.length > 0 && (
-                                    <div className="mt-6 text-left border rounded-lg overflow-hidden">
-                                        <div className="bg-muted px-4 py-2 border-b text-sm font-medium">Error Log</div>
-                                        <ScrollArea className="h-32 p-2">
-                                            {bulkResult.errors.map((err: any, idx: number) => (
-                                                <div key={idx} className="text-xs text-destructive mb-1 font-mono">
-                                                    Row {err.row}: {err.message}
-                                                </div>
-                                            ))}
+                                    <div className="border rounded-lg overflow-hidden mt-4">
+                                        <div className="bg-muted/50 px-4 py-2 border-b text-xs font-semibold uppercase text-muted-foreground">
+                                            Error Log
+                                        </div>
+                                        <ScrollArea className="h-32 p-0">
+                                            <div className="p-2 space-y-1">
+                                                {bulkResult.errors.map((err: any, idx: number) => (
+                                                    <div key={idx} className="text-xs text-destructive flex gap-2 font-mono bg-destructive/5 p-1.5 rounded">
+                                                        <span className="font-semibold shrink-0">Row {err.row}:</span>
+                                                        <span>{err.message}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </ScrollArea>
                                     </div>
                                 )}
                             </div>
                         )}
+
+                        {bulkStatus === 'failed' && (
+                            <div className="py-6 text-center text-destructive">
+                                <div className="bg-red-50 h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <AlertCircle className="h-8 w-8 text-red-600" />
+                                </div>
+                                <h3 className="text-lg font-medium text-foreground">Generation Failed</h3>
+                                <p className="text-muted-foreground text-sm mt-2 max-w-xs mx-auto">
+                                    {bulkResult?.error || 'Something went wrong while starting the process. Please try again.'}
+                                </p>
+                            </div>
+                        )}
                     </div>
 
-                    <DialogFooter>
-                        {bulkStep === 1 && (
+                    <DialogFooter className="sm:justify-between">
+                        {bulkStatus === 'idle' ? (
                             <>
-                                <Button variant="outline" onClick={resetBulkDialog}>Cancel</Button>
-                                <Button
-                                    onClick={async () => {
-                                        await loadSheetHeaders();
-                                        setBulkStep(2);
-                                    }}
-                                    disabled={!group?.sheetId || loadingHeaders}
-                                >
-                                    {loadingHeaders ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                    Next: Map Columns
-                                </Button>
+                                <Button variant="ghost" onClick={resetBulkDialog}>Cancel</Button>
+                                {group?.sheetId && group?.columnMapping && Object.keys(group.columnMapping).length > 0 ? (
+                                    <Button onClick={handleBulkStart} className="min-w-[140px]">
+                                        Start Generating
+                                    </Button>
+                                ) : (
+                                    <Button asChild>
+                                        <a href={`/groups/${group?.id}/settings`}>Go to Settings</a>
+                                    </Button>
+                                )}
                             </>
-                        )}
-
-                        {bulkStep === 2 && (
-                            <>
-                                <Button variant="outline" onClick={() => setBulkStep(1)}>Back</Button>
-                                <Button onClick={handleBulkStart}>Start Generating</Button>
-                            </>
-                        )}
-
-                        {bulkStep === 3 && bulkStatus !== 'processing' && (
-                            <Button onClick={resetBulkDialog}>Close</Button>
+                        ) : bulkStatus === 'completed' || bulkStatus === 'failed' ? (
+                            <Button onClick={resetBulkDialog} className="w-full sm:w-auto sm:ml-auto">
+                                Close
+                            </Button>
+                        ) : (
+                            // Processing state - no buttons or disabled cancel?
+                            <div />
                         )}
                     </DialogFooter>
                 </DialogContent>

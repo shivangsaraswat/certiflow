@@ -19,7 +19,7 @@ export function GroupGenerateBulk({ group, onGenerated }: Props) {
             <CardHeader>
                 <CardTitle>Bulk Generate Certificates</CardTitle>
                 <CardDescription>
-                    Upload a CSV or use Data Vault to generate multiple certificates
+                    Upload a CSV or use Dataset to generate multiple certificates
                 </CardDescription>
             </CardHeader>
             <CardContent>

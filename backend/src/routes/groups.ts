@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db.js';
-import { groups, certificates, templates, bulkJobs, spreadsheets } from '../db/schema.js';
+import { groups, certificates, templates, bulkJobs, spreadsheets, groupSmtpConfig } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
@@ -40,14 +40,18 @@ router.get('/', async (req, res) => {
         // Get template info and certificate counts for each group
         const result = await Promise.all(
             allGroups.map(async (group) => {
-                const template = await db
-                    .select({
-                        id: templates.id,
-                        name: templates.name,
-                        code: templates.code,
-                    })
-                    .from(templates)
-                    .where(eq(templates.id, group.templateId));
+                let template = null;
+                if (group.templateId) {
+                    const templateResult = await db
+                        .select({
+                            id: templates.id,
+                            name: templates.name,
+                            code: templates.code,
+                        })
+                        .from(templates)
+                        .where(eq(templates.id, group.templateId));
+                    template = templateResult[0] || null;
+                }
 
                 const certCount = await db
                     .select({ count: sql<number>`count(*)::int` })
@@ -56,7 +60,7 @@ router.get('/', async (req, res) => {
 
                 return {
                     ...group,
-                    template: template[0] || null,
+                    template,
                     certificateCount: certCount[0]?.count || 0,
                 };
             })
@@ -71,31 +75,20 @@ router.get('/', async (req, res) => {
 
 /**
  * POST /api/groups - Create a new group
+ * Simplified: Only name and description required
+ * Template and data vault are configured in settings after creation
  */
 router.post('/', async (req, res) => {
     try {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        const { name, description, templateId, sheetId } = req.body;
+        const { name, description } = req.body;
 
-        if (!name || !templateId) {
+        if (!name) {
             return res.status(400).json({
                 success: false,
-                error: 'Name and templateId are required',
-            });
-        }
-
-        // Verify template exists
-        const template = await db
-            .select()
-            .from(templates)
-            .where(eq(templates.id, templateId));
-
-        if (!template[0]) {
-            return res.status(400).json({
-                success: false,
-                error: 'Template not found',
+                error: 'Name is required',
             });
         }
 
@@ -106,8 +99,8 @@ router.post('/', async (req, res) => {
             id,
             name,
             description: description || null,
-            templateId,
-            sheetId: sheetId || null,
+            templateId: null, // Configured in settings
+            sheetId: null,    // Configured in settings
             userId: userId,
             createdAt: now,
             updatedAt: now,
@@ -118,14 +111,11 @@ router.post('/', async (req, res) => {
             data: {
                 id,
                 name,
-                description,
-                templateId,
-                sheetId: sheetId || null,
-                template: {
-                    id: template[0].id,
-                    name: template[0].name,
-                    code: template[0].code,
-                },
+                description: description || null,
+                templateId: null,
+                sheetId: null,
+                template: null,
+                sheet: null,
                 certificateCount: 0,
                 createdAt: now,
                 updatedAt: now,
@@ -158,10 +148,14 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
-        const template = await db
-            .select()
-            .from(templates)
-            .where(eq(templates.id, group[0].templateId));
+        let template = null;
+        if (group[0].templateId) {
+            const templateResult = await db
+                .select()
+                .from(templates)
+                .where(eq(templates.id, group[0].templateId));
+            template = templateResult[0] || null;
+        }
 
         const certCount = await db
             .select({ count: sql<number>`count(*)::int` })
@@ -180,7 +174,7 @@ router.get('/:id', async (req, res) => {
             success: true,
             data: {
                 ...group[0],
-                template: template[0] || null,
+                template,
                 sheet: sheet[0] || null,
                 certificateCount: certCount[0]?.count || 0,
             },
@@ -256,6 +250,270 @@ router.delete('/:id', async (req, res) => {
     } catch (error) {
         console.error('Error deleting group:', error);
         res.status(500).json({ success: false, error: 'Failed to delete group' });
+    }
+});
+
+// =============================================================================
+// Group Settings APIs
+// =============================================================================
+
+/**
+ * PUT /api/groups/:id/settings/template - Update template selection
+ */
+router.put('/:id/settings/template', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { templateId } = req.body;
+
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Verify template exists if provided
+        if (templateId) {
+            const template = await db
+                .select({ id: templates.id })
+                .from(templates)
+                .where(eq(templates.id, templateId));
+
+            if (!template[0]) {
+                return res.status(400).json({ success: false, error: 'Template not found' });
+            }
+        }
+
+        await db
+            .update(groups)
+            .set({
+                templateId: templateId || null,
+                updatedAt: new Date(),
+            })
+            .where(eq(groups.id, id));
+
+        res.json({ success: true, data: { id, templateId, updated: true } });
+    } catch (error) {
+        console.error('Error updating group template:', error);
+        res.status(500).json({ success: false, error: 'Failed to update template' });
+    }
+});
+
+/**
+ * PUT /api/groups/:id/settings/data - Update data vault configuration
+ */
+router.put('/:id/settings/data', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { sheetId, selectedSheetTab, columnMapping } = req.body;
+
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Verify spreadsheet exists if provided
+        if (sheetId) {
+            const sheet = await db
+                .select({ id: spreadsheets.id })
+                .from(spreadsheets)
+                .where(eq(spreadsheets.id, sheetId));
+
+            if (!sheet[0]) {
+                return res.status(400).json({ success: false, error: 'Spreadsheet not found' });
+            }
+        }
+
+        await db
+            .update(groups)
+            .set({
+                sheetId: sheetId || null,
+                selectedSheetTab: selectedSheetTab || null,
+                columnMapping: columnMapping || null,
+                updatedAt: new Date(),
+            })
+            .where(eq(groups.id, id));
+
+        res.json({ success: true, data: { id, sheetId, selectedSheetTab, columnMapping, updated: true } });
+    } catch (error) {
+        console.error('Error updating group data config:', error);
+        res.status(500).json({ success: false, error: 'Failed to update data configuration' });
+    }
+});
+
+/**
+ * PUT /api/groups/:id/settings/email-template - Update email template
+ */
+router.put('/:id/settings/email-template', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { emailSubject, emailTemplateHtml } = req.body;
+
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        await db
+            .update(groups)
+            .set({
+                emailSubject: emailSubject || null,
+                emailTemplateHtml: emailTemplateHtml || null,
+                updatedAt: new Date(),
+            })
+            .where(eq(groups.id, id));
+
+        res.json({ success: true, data: { id, emailSubject, updated: true } });
+    } catch (error) {
+        console.error('Error updating email template:', error);
+        res.status(500).json({ success: false, error: 'Failed to update email template' });
+    }
+});
+
+/**
+ * PUT /api/groups/:id/settings/smtp - Save SMTP configuration
+ */
+router.put('/:id/settings/smtp', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { smtpHost, smtpPort, smtpEmail, smtpPassword, encryptionType, senderName, replyTo } = req.body;
+
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Import encryption service
+        const { encrypt } = await import('../services/encryption.service.js');
+
+        // Check if SMTP config exists
+        const existingConfig = await db
+            .select()
+            .from(groupSmtpConfig)
+            .where(eq(groupSmtpConfig.groupId, id));
+
+        const encryptedPassword = smtpPassword ? encrypt(smtpPassword) : existingConfig[0]?.smtpPassword;
+
+        if (existingConfig[0]) {
+            await db
+                .update(groupSmtpConfig)
+                .set({
+                    smtpHost,
+                    smtpPort: parseInt(smtpPort),
+                    smtpEmail,
+                    smtpPassword: encryptedPassword,
+                    encryptionType: encryptionType || 'TLS',
+                    senderName: senderName || null,
+                    replyTo: replyTo || null,
+                    isConfigured: true,
+                    updatedAt: new Date(),
+                })
+                .where(eq(groupSmtpConfig.groupId, id));
+        } else {
+            await db
+                .insert(groupSmtpConfig)
+                .values({
+                    id: crypto.randomUUID(),
+                    groupId: id,
+                    smtpHost,
+                    smtpPort: parseInt(smtpPort),
+                    smtpEmail,
+                    smtpPassword: encryptedPassword,
+                    encryptionType: encryptionType || 'TLS',
+                    senderName: senderName || null,
+                    replyTo: replyTo || null,
+                    isConfigured: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
+        }
+
+        res.json({ success: true, data: { id, smtpEmail, updated: true } });
+    } catch (error) {
+        console.error('Error saving SMTP config:', error);
+        res.status(500).json({ success: false, error: 'Failed to save SMTP configuration' });
+    }
+});
+
+/**
+ * POST /api/groups/:id/settings/smtp/test - Test SMTP connection
+ */
+router.post('/:id/settings/smtp/test', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { smtpHost, smtpPort, smtpEmail, smtpPassword, encryptionType } = req.body;
+
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+        // Verify group ownership
+        const existing = await db
+            .select()
+            .from(groups)
+            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+
+        if (!existing[0]) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Test SMTP connection using nodemailer
+        const nodemailer = await import('nodemailer');
+
+        const transportConfig: any = {
+            host: smtpHost,
+            port: parseInt(smtpPort),
+            auth: {
+                user: smtpEmail,
+                pass: smtpPassword,
+            },
+        };
+
+        if (encryptionType === 'SSL') {
+            transportConfig.secure = true;
+        } else if (encryptionType === 'TLS') {
+            transportConfig.secure = false;
+            transportConfig.requireTLS = true;
+        } else {
+            transportConfig.secure = false;
+        }
+
+        const transporter = nodemailer.createTransport(transportConfig);
+        await transporter.verify();
+
+        res.json({ success: true, message: 'SMTP connection successful' });
+    } catch (error: any) {
+        console.error('SMTP test failed:', error);
+        res.status(400).json({ success: false, error: error.message || 'SMTP connection failed' });
     }
 });
 
@@ -340,6 +598,11 @@ router.post('/:id/generate/single', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
+        // Check if template is configured
+        if (!group[0].templateId) {
+            return res.status(400).json({ success: false, error: 'Template not configured. Please configure the group settings first.' });
+        }
+
         const template = await getTemplateById(group[0].templateId, userId);
         if (!template) {
             return res.status(400).json({ success: false, error: 'Template not found' });
@@ -407,6 +670,11 @@ router.post('/:id/generate/bulk', upload.single('csv'), async (req, res) => {
             .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
         if (!group[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Check if template is configured
+        if (!group[0].templateId) {
+            return res.status(400).json({ success: false, error: 'Template not configured. Please configure the group settings first.' });
         }
 
         const templateId = group[0].templateId;

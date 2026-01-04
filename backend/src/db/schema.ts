@@ -38,8 +38,14 @@ export const groups = pgTable('groups', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     description: text('description'),
-    templateId: text('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
+    // Configuration - all nullable for settings-first approach
+    templateId: text('template_id').references(() => templates.id, { onDelete: 'set null' }),
     sheetId: text('sheet_id').references(() => spreadsheets.id, { onDelete: 'set null' }),
+    selectedSheetTab: text('selected_sheet_tab'), // Which tab in the spreadsheet
+    columnMapping: jsonb('column_mapping'), // { attrId: columnName }
+    // Email configuration
+    emailTemplateHtml: text('email_template_html'),
+    emailSubject: text('email_subject'),
     userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -52,7 +58,90 @@ export const groupsRelations = relations(groups, ({ one, many }) => ({
     }),
     certificates: many(certificates),
     bulkJobs: many(bulkJobs),
+    smtpConfig: one(groupSmtpConfig, {
+        fields: [groups.id],
+        references: [groupSmtpConfig.groupId],
+    }),
+    mailJobs: many(mailJobs),
+    mailLogs: many(mailLogs),
 }));
+
+// =============================================================================
+// Group SMTP Configuration - Encrypted credentials per group
+// =============================================================================
+export const groupSmtpConfig = pgTable('group_smtp_config', {
+    id: text('id').primaryKey(),
+    groupId: text('group_id').notNull().unique().references(() => groups.id, { onDelete: 'cascade' }),
+    smtpHost: text('smtp_host').notNull(),
+    smtpPort: integer('smtp_port').notNull(),
+    smtpEmail: text('smtp_email').notNull(),
+    smtpPassword: text('smtp_password').notNull(), // Encrypted
+    encryptionType: text('encryption_type').notNull(), // 'tls' | 'ssl' | 'none'
+    senderName: text('sender_name'),
+    replyTo: text('reply_to'),
+    isConfigured: boolean('is_configured').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const groupSmtpConfigRelations = relations(groupSmtpConfig, ({ one }) => ({
+    group: one(groups, {
+        fields: [groupSmtpConfig.groupId],
+        references: [groups.id],
+    }),
+}));
+
+// =============================================================================
+// Mail Jobs - Async mail sending tracking
+// =============================================================================
+export const mailJobs = pgTable('mail_jobs', {
+    id: text('id').primaryKey(),
+    groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+    totalRecipients: integer('total_recipients').notNull(),
+    sentCount: integer('sent_count').default(0).notNull(),
+    failedCount: integer('failed_count').default(0).notNull(),
+    pendingCount: integer('pending_count').notNull(),
+    status: text('status').default('pending').notNull(), // 'pending' | 'processing' | 'completed' | 'failed'
+    recipientData: jsonb('recipient_data'), // Array of recipient details
+    errors: jsonb('errors'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const mailJobsRelations = relations(mailJobs, ({ one, many }) => ({
+    group: one(groups, {
+        fields: [mailJobs.groupId],
+        references: [groups.id],
+    }),
+    logs: many(mailLogs),
+}));
+
+// =============================================================================
+// Mail Logs - Permanent record of all emails sent
+// =============================================================================
+export const mailLogs = pgTable('mail_logs', {
+    id: text('id').primaryKey(),
+    groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+    mailJobId: text('mail_job_id').references(() => mailJobs.id, { onDelete: 'set null' }),
+    recipientEmail: text('recipient_email').notNull(),
+    recipientName: text('recipient_name'),
+    subject: text('subject').notNull(),
+    status: text('status').notNull(), // 'sent' | 'failed'
+    errorMessage: text('error_message'),
+    sentAt: timestamp('sent_at').defaultNow().notNull(),
+});
+
+export const mailLogsRelations = relations(mailLogs, ({ one }) => ({
+    group: one(groups, {
+        fields: [mailLogs.groupId],
+        references: [groups.id],
+    }),
+    mailJob: one(mailJobs, {
+        fields: [mailLogs.mailJobId],
+        references: [mailJobs.id],
+    }),
+}));
+
 
 // =============================================================================
 // Certificates

@@ -14,8 +14,16 @@ router.get('/', async (req, res) => {
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const result = await db
-            .select()
+            .select({
+                id: spreadsheets.id,
+                name: spreadsheets.name,
+                updatedAt: spreadsheets.updatedAt,
+                createdAt: spreadsheets.createdAt,
+                userId: spreadsheets.userId,
+                content: spreadsheetData.content
+            })
             .from(spreadsheets)
+            .leftJoin(spreadsheetData, eq(spreadsheets.id, spreadsheetData.spreadsheetId))
             .where(eq(spreadsheets.userId, userId))
             .orderBy(desc(spreadsheets.updatedAt));
 

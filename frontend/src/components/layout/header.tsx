@@ -15,17 +15,36 @@ import { usePageTitle } from '@/components/providers/page-title-provider';
 export function Header() {
     const pathname = usePathname();
 
-    const { title } = usePageTitle();
+    const { title, actions, backButton } = usePageTitle();
 
     // Generate breadcrumb from pathname
     const getBreadcrumb = () => {
+        const segments = pathname.split('/').filter(Boolean);
+        const root = segments[0];
+
         if (title) {
-            // If we have a custom title (like Group Name), use it
-            // Assuming format: "Groups / [Group Name]"
-            return `Groups / ${title}`;
+            let prefix = 'Dashboard';
+            if (root === 'groups') prefix = 'Groups';
+            else if (root === 'data-vault') prefix = 'Dataset';
+            else if (root === 'templates') prefix = 'Templates';
+            else if (root === 'signatures') prefix = 'Signatures';
+            else if (root === 'admin') prefix = 'Admin';
+
+            // If we are on the main section page (one segment) and the title matches the prefix,
+            // just show the prefix to avoid "Dataset / Dataset" or "Dashboard / Dataset"
+            if (segments.length === 1 && (title === prefix || prefix === 'Dashboard')) {
+                return title;
+            }
+
+            return (
+                <div className="flex items-center truncate">
+                    <span className="hidden md:inline mr-2 text-foreground font-medium">{prefix}</span>
+                    <span className="hidden md:inline mr-2 text-muted-foreground">/</span>
+                    <span className="truncate">{title}</span>
+                </div>
+            );
         }
 
-        const segments = pathname.split('/').filter(Boolean);
         if (segments.length === 0) return 'Dashboard';
 
         return segments.map((segment, index) => {
@@ -35,6 +54,7 @@ export function Header() {
                 if (segments[index - 1] === 'templates') return 'Editor';
                 return 'Item';
             }
+            if (segment === 'dataset') return 'Dataset';
             return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ');
         }).join(' / ');
     };
@@ -54,11 +74,25 @@ export function Header() {
                 </SheetContent>
             </Sheet>
 
-            {/* Breadcrumb */}
-            <h1 className="text-lg font-semibold">{getBreadcrumb()}</h1>
+            {/* Title & Back Button */}
+            <div className="flex items-center gap-1 min-w-0 flex-1 lg:flex-none mr-2">
+                {backButton && (
+                    <div className="flex-shrink-0">
+                        {backButton}
+                    </div>
+                )}
+                <h1 className="text-base sm:text-lg font-semibold truncate">{getBreadcrumb()}</h1>
+            </div>
 
             {/* Spacer */}
-            <div className="flex-1" />
+            <div className="hidden lg:block flex-1" />
+
+            {/* Actions */}
+            {actions && (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    {actions}
+                </div>
+            )}
         </header>
     );
 }
