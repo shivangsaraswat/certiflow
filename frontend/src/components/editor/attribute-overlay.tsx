@@ -6,9 +6,10 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { GripVertical, X } from 'lucide-react';
+import { GripVertical, X, QrCode, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DynamicAttribute } from '@/types';
+import { SYSTEM_ATTRIBUTE_IDS } from '@/types';
 
 interface AttributeOverlayProps {
     attribute: DynamicAttribute;
@@ -157,21 +158,44 @@ export function AttributeOverlay({
                     </button>
                 </div>
 
-                {/* Main Value Preview */}
-                <div
-                    className={cn(
-                        "px-3 py-1.5 whitespace-nowrap text-center font-mono text-sm",
-                        !isSelected && !isDragging && "bg-black/5 rounded-sm" // Subtle background when just sitting there
-                    )}
-                    style={{
-                        fontSize: Math.max(10, attribute.fontSize * scale),
-                        color: attribute.color,
-                        fontFamily: attribute.fontFamily,
-                        fontWeight: attribute.fontWeight,
-                    }}
-                >
-                    {attribute.placeholder}
-                </div>
+                {/* Main Value Preview - Different for QR vs Text */}
+                {attribute.type === 'qr' ? (
+                    // QR Code Skeleton Placeholder
+                    <div
+                        className={cn(
+                            "flex items-center justify-center border-2 border-dashed border-muted-foreground/40 bg-muted/20 rounded",
+                            isSelected && "border-primary/60"
+                        )}
+                        style={{
+                            width: (attribute.width || 80) * scale,
+                            height: (attribute.height || 80) * scale,
+                        }}
+                    >
+                        <QrCode
+                            className="text-muted-foreground/50"
+                            style={{
+                                width: Math.min(40, (attribute.width || 80) * scale * 0.5),
+                                height: Math.min(40, (attribute.height || 80) * scale * 0.5),
+                            }}
+                        />
+                    </div>
+                ) : (
+                    // Text Placeholder
+                    <div
+                        className={cn(
+                            "px-3 py-1.5 whitespace-nowrap text-center font-mono text-sm",
+                            !isSelected && !isDragging && "bg-black/5 rounded-sm"
+                        )}
+                        style={{
+                            fontSize: Math.max(10, attribute.fontSize * scale),
+                            color: attribute.color,
+                            fontFamily: attribute.fontFamily,
+                            fontWeight: attribute.fontWeight,
+                        }}
+                    >
+                        {attribute.placeholder}
+                    </div>
+                )}
             </div>
 
             {/* Helper Lines (visual sugar) */}

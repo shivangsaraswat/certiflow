@@ -713,7 +713,8 @@ router.post('/:id/generate/single', async (req, res) => {
 
         // Generate certificate code using template code and email
         const certificateCode = generateCertificateCode(template.code, recipientEmail);
-        const filename = `${certificateCode}.pdf`;
+        // Append timestamp to filename to prevent caching issues
+        const filename = `${certificateCode}_${Date.now()}.pdf`;
 
         // Inject certificateId into data for rendering
         const renderData = { ...data, certificateId: certificateCode };

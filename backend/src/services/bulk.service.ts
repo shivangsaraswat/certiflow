@@ -262,7 +262,8 @@ async function processBatch(
 
             // Generate Certificate ID using template code and email
             const certId = generateCertificateCode(template.code, recipientEmail);
-            const filename = `${certId}.pdf`;
+            // Append timestamp to filename to prevent caching issues
+            const filename = `${certId}_${Date.now()}.pdf`;
 
             // Inject certificateId into certData for rendering
             certData['certificateId'] = certId;

@@ -653,30 +653,37 @@ export default function GroupSettingsPage() {
                                                     </Alert>
                                                 ) : (
                                                     <div className="grid gap-4">
-                                                        {selectedTemplate.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
-                                                            <div key={attr.id} className="grid grid-cols-3 items-center gap-4">
-                                                                <Label className="col-span-1">
-                                                                    {attr.name} {attr.required && <span className="text-destructive">*</span>}
-                                                                </Label>
-                                                                <div className="col-span-2">
-                                                                    <Select value={columnMapping[attr.id] || '__skip__'}
-                                                                        onValueChange={(val) => setColumnMapping(prev => {
-                                                                            const n = { ...prev };
-                                                                            if (val === '__skip__') delete n[attr.id]; else n[attr.id] = val;
-                                                                            return n;
-                                                                        })}
-                                                                    >
-                                                                        <SelectTrigger>
-                                                                            <SelectValue placeholder="Select column" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
-                                                                            {sheetColumns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
-                                                                        </SelectContent>
-                                                                    </Select>
+                                                        {/* Filter out system attributes that are auto-generated and don't need mapping:
+                                                            - certificateId: auto-generated from template code + email
+                                                            - generatedDate: auto-generated at certificate creation time
+                                                            - qrCode: URL is stored in template editor, not from spreadsheet
+                                                        */}
+                                                        {selectedTemplate.attributes
+                                                            .filter(attr => !['certificateId', 'generatedDate', 'qrCode'].includes(attr.id))
+                                                            .map((attr) => (
+                                                                <div key={attr.id} className="grid grid-cols-3 items-center gap-4">
+                                                                    <Label className="col-span-1">
+                                                                        {attr.name} {attr.required && <span className="text-destructive">*</span>}
+                                                                    </Label>
+                                                                    <div className="col-span-2">
+                                                                        <Select value={columnMapping[attr.id] || '__skip__'}
+                                                                            onValueChange={(val) => setColumnMapping(prev => {
+                                                                                const n = { ...prev };
+                                                                                if (val === '__skip__') delete n[attr.id]; else n[attr.id] = val;
+                                                                                return n;
+                                                                            })}
+                                                                        >
+                                                                            <SelectTrigger>
+                                                                                <SelectValue placeholder="Select column" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
+                                                                                {sheetColumns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            ))}
                                                         <Separator className="my-2" />
                                                         <div className="grid grid-cols-3 items-center gap-4">
                                                             <Label className="col-span-1">Email Address <span className="text-xs text-muted-foreground">(for sending)</span></Label>

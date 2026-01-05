@@ -18,9 +18,9 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, Type, Calendar, Signature, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Trash2, Type, Calendar, Signature, AlignLeft, AlignCenter, AlignRight, QrCode, Lock } from 'lucide-react';
 import type { DynamicAttribute } from '@/types';
-import { AVAILABLE_FONTS, FONT_SIZES, ATTRIBUTE_TYPES, SYSTEM_ATTRIBUTE_IDS } from '@/types';
+import { AVAILABLE_FONTS, FONT_SIZES, ATTRIBUTE_TYPES, SYSTEM_ATTRIBUTE_IDS, SYSTEM_ATTRIBUTE_DEFS } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface PropertyPanelProps {
@@ -67,45 +67,85 @@ export function PropertyPanel({
 
                     <Separator />
 
-                    {/* Attributes List */}
-                    <div className="space-y-3">
-                        <h4 className="text-sm font-medium text-muted-foreground">Placed Attributes</h4>
-                        {attributes.length === 0 ? (
-                            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                                No attributes placed yet.
-                                <br />
-                                Click "Add Attribute" below.
-                            </div>
-                        ) : (
-                            <div className="grid gap-2">
-                                {attributes.map((attr) => (
+                    {/* Attributes List - Split into System and Custom */}
+                    <div className="space-y-4">
+                        {/* System Attributes */}
+                        <div className="space-y-2">
+                            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                <Lock className="h-3 w-3" />
+                                System Attributes
+                            </h4>
+                            <div className="grid gap-1.5">
+                                {attributes.filter(a => SYSTEM_ATTRIBUTE_IDS.includes(a.id)).map((attr) => (
                                     <div
                                         key={attr.id}
                                         onClick={() => onSelect?.(attr.id)}
-                                        className="flex cursor-pointer items-center justify-between rounded-md border bg-card px-3 py-2 text-sm transition-colors hover:border-primary hover:shadow-sm"
+                                        className="flex cursor-pointer items-center justify-between rounded-md border bg-primary/5 px-3 py-2 text-sm transition-colors hover:border-primary hover:shadow-sm"
                                     >
                                         <div className="flex items-center gap-2">
-                                            {attr.type === 'signature' ? (
-                                                <Signature className="h-3.5 w-3.5 text-muted-foreground" />
+                                            {attr.type === 'qr' ? (
+                                                <QrCode className="h-3.5 w-3.5 text-primary" />
                                             ) : attr.type === 'date' ? (
-                                                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <Calendar className="h-3.5 w-3.5 text-primary" />
                                             ) : (
-                                                <Type className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <Type className="h-3.5 w-3.5 text-primary" />
                                             )}
                                             <span className="font-medium truncate max-w-[120px]">{attr.name}</span>
                                         </div>
-                                        <span className="text-xs text-muted-foreground">Pg {attr.page}</span>
+                                        <Lock className="h-3 w-3 text-muted-foreground" />
                                     </div>
                                 ))}
+                                {attributes.filter(a => SYSTEM_ATTRIBUTE_IDS.includes(a.id)).length === 0 && (
+                                    <div className="text-xs text-muted-foreground italic py-1">
+                                        No system attributes placed
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
+
+                        {/* Custom Attributes */}
+                        <div className="space-y-2">
+                            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                Custom Attributes
+                            </h4>
+                            {attributes.filter(a => !SYSTEM_ATTRIBUTE_IDS.includes(a.id)).length === 0 ? (
+                                <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                                    No custom attributes yet.
+                                </div>
+                            ) : (
+                                <div className="grid gap-1.5">
+                                    {attributes.filter(a => !SYSTEM_ATTRIBUTE_IDS.includes(a.id)).map((attr) => (
+                                        <div
+                                            key={attr.id}
+                                            onClick={() => onSelect?.(attr.id)}
+                                            className="flex cursor-pointer items-center justify-between rounded-md border bg-card px-3 py-2 text-sm transition-colors hover:border-primary hover:shadow-sm"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                {attr.type === 'signature' ? (
+                                                    <Signature className="h-3.5 w-3.5 text-muted-foreground" />
+                                                ) : attr.type === 'date' ? (
+                                                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                                ) : attr.type === 'qr' ? (
+                                                    <QrCode className="h-3.5 w-3.5 text-muted-foreground" />
+                                                ) : (
+                                                    <Type className="h-3.5 w-3.5 text-muted-foreground" />
+                                                )}
+                                                <span className="font-medium truncate max-w-[120px]">{attr.name}</span>
+                                            </div>
+                                            <span className="text-xs text-muted-foreground">Pg {attr.page}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </Card>
         );
     }
 
-    const TypeIcon = attribute.type === 'date' ? Calendar : attribute.type === 'signature' ? Signature : Type;
+    const TypeIcon = attribute.type === 'date' ? Calendar : attribute.type === 'signature' ? Signature : attribute.type === 'qr' ? QrCode : Type;
+    const isSystem = SYSTEM_ATTRIBUTE_IDS.includes(attribute.id);
 
     return (
         <div className="flex h-full w-80 flex-col bg-background">
@@ -113,6 +153,12 @@ export function PropertyPanel({
                 <h3 className="flex items-center gap-2 font-semibold text-sm">
                     <TypeIcon className="h-4 w-4 text-primary" />
                     Edit Attribute
+                    {isSystem && (
+                        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                            <Lock className="h-3 w-3" />
+                            System
+                        </span>
+                    )}
                 </h3>
             </div>
 
@@ -126,6 +172,7 @@ export function PropertyPanel({
                                 id="name"
                                 value={attribute.name}
                                 onChange={(e) => {
+                                    if (isSystem) return; // Don't allow name change for system attrs
                                     const val = e.target.value;
                                     // Auto-generate placeholder: strip spaces for a clean variable tag
                                     const generated = `{${val.replace(/\s+/g, '')}}`;
@@ -133,6 +180,7 @@ export function PropertyPanel({
                                 }}
                                 placeholder="Recipient Name"
                                 className="h-8 text-sm"
+                                disabled={isSystem}
                             />
                         </div>
 
@@ -145,6 +193,7 @@ export function PropertyPanel({
                                     value={attribute.placeholder.replace(/^\{|\}$/g, '')}
                                     onChange={(e) => onChange({ placeholder: `{${e.target.value}}` })}
                                     className="h-8 pl-5 font-mono text-sm"
+                                    disabled={isSystem}
                                 />
                                 <span className="absolute right-2.5 top-2 text-muted-foreground/60 text-xs font-mono">{'}'}</span>
                             </div>
@@ -157,6 +206,7 @@ export function PropertyPanel({
                                 checked={attribute.required}
                                 onCheckedChange={(checked) => onChange({ required: checked })}
                                 className="scale-90"
+                                disabled={isSystem}
                             />
                         </div>
 
@@ -164,7 +214,8 @@ export function PropertyPanel({
                             <Label className="text-xs font-medium text-muted-foreground">Type</Label>
                             <Select
                                 value={attribute.type}
-                                onValueChange={(value: 'text' | 'date' | 'signature') => onChange({ type: value })}
+                                onValueChange={(value: 'text' | 'date' | 'signature' | 'qr') => onChange({ type: value })}
+                                disabled={isSystem}
                             >
                                 <SelectTrigger className="h-8 text-sm">
                                     <SelectValue />
@@ -173,7 +224,7 @@ export function PropertyPanel({
                                     {ATTRIBUTE_TYPES.map((type) => (
                                         <SelectItem key={type.value} value={type.value}>
                                             <div className="flex items-center gap-2 text-sm">
-                                                {type.value === 'signature' ? <Signature className="h-3 w-3" /> : type.value === 'date' ? <Calendar className="h-3 w-3" /> : <Type className="h-3 w-3" />}
+                                                {type.value === 'signature' ? <Signature className="h-3 w-3" /> : type.value === 'date' ? <Calendar className="h-3 w-3" /> : type.value === 'qr' ? <QrCode className="h-3 w-3" /> : <Type className="h-3 w-3" />}
                                                 {type.label}
                                             </div>
                                         </SelectItem>
@@ -181,6 +232,25 @@ export function PropertyPanel({
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* QR Code URL - Only for QR type */}
+                        {attribute.type === 'qr' && (
+                            <div className="space-y-1">
+                                <Label htmlFor="qrUrl" className="text-xs font-medium text-muted-foreground">
+                                    QR Code URL
+                                </Label>
+                                <Input
+                                    id="qrUrl"
+                                    value={attribute.qrUrl || ''}
+                                    onChange={(e) => onChange({ qrUrl: e.target.value })}
+                                    placeholder="https://verify.example.com/{certificateId}"
+                                    className="h-8 text-sm font-mono"
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                    Use {'{certificateId}'}, {'{recipientName}'}, etc. as placeholders
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <Separator />
