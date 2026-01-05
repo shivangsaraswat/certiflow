@@ -20,6 +20,7 @@ interface AttributeOverlayProps {
     onPositionChange: (x: number, y: number) => void;
     onResizeChange?: (width: number, height: number) => void;
     onDelete: () => void;
+    previewValue?: string;
 }
 
 export function AttributeOverlay({
@@ -31,6 +32,7 @@ export function AttributeOverlay({
     onPositionChange,
     onResizeChange,
     onDelete,
+    previewValue,
 }: AttributeOverlayProps) {
     const elementRef = useRef<HTMLDivElement>(null);
     const [interactionState, setInteractionState] = useState<'idle' | 'dragging' | 'resizing'>('idle');
@@ -240,6 +242,22 @@ export function AttributeOverlay({
                 onSelect();
             }}
         >
+            {/* ALIGNMENT GUIDES - Only visible when selected */}
+            {isSelected && (
+                <>
+                    {/* Horizontal Baseline - Extends infinitely (visually capped to viewport width for cleanliness) */}
+                    <div className="absolute bottom-0 left-[calc(-50vw)] right-[calc(-50vw)] border-b border-primary/40 pointer-events-none border-dashed"
+                        style={{ transform: 'translateY(1px)' }} // Slight offset to align perfectly with bottom edge
+                    />
+
+                    {/* Vertical Anchor - Position depends on alignment */}
+                    <div className={cn(
+                        "absolute top-[calc(-50vh)] bottom-[calc(-50vh)] border-l border-primary/40 pointer-events-none border-dashed",
+                        attribute.align === 'center' ? 'left-1/2' : attribute.align === 'right' ? 'right-0' : 'left-0'
+                    )} />
+                </>
+            )}
+
             {/* Main Content */}
             <div className={cn(
                 "relative flex flex-col w-full h-full",
@@ -309,6 +327,7 @@ export function AttributeOverlay({
                     </div>
                 ) : (
                     // Text Content
+                    // If previewValue is provided, use it. Otherwise fall back to placeholder or name.
                     <div
                         className={cn(
                             "px-2 pb-1 text-sm font-medium text-foreground whitespace-nowrap",
@@ -316,23 +335,15 @@ export function AttributeOverlay({
                         )}
                         style={{
                             fontSize: Math.max(10, attribute.fontSize * scale),
-                            color: attribute.color,
                             fontFamily: attribute.fontFamily,
                             fontWeight: attribute.fontWeight,
+                            color: attribute.color,
                         }}
                     >
-                        {attribute.placeholder}
+                        {previewValue || attribute.placeholder || `{${attribute.name}}`}
                     </div>
                 )}
             </div>
-
-            {/* Helper Lines (visual sugar) */}
-            {isSelected && (
-                <>
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full h-2 w-px bg-primary/50" />
-                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full h-2 w-px bg-primary/50" />
-                </>
-            )}
         </div>
     );
 }
