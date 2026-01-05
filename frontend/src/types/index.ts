@@ -30,7 +30,7 @@ export interface DynamicAttribute {
     id: string;
     name: string;                     // Display name (e.g., "Recipient Name")
     placeholder: string;              // Placeholder shown in editor (e.g., "{Name}")
-    type: 'text' | 'date' | 'signature';
+    type: 'text' | 'date' | 'signature' | 'qr';
     required: boolean;
 
     // Position in PDF coordinates
@@ -49,6 +49,12 @@ export interface DynamicAttribute {
     // For signature type
     width?: number;
     height?: number;
+
+    // System attribute flag - cannot be renamed or deleted
+    isSystem?: boolean;
+
+    // For QR code type - URL template with optional placeholders
+    qrUrl?: string;
 }
 
 // =============================================================================
@@ -243,8 +249,37 @@ export const ATTRIBUTE_TYPES = [
     { value: 'text', label: 'Text' },
     { value: 'date', label: 'Date' },
     { value: 'signature', label: 'Signature' },
+    { value: 'qr', label: 'QR Code' },
 ];
 
 // System attribute IDs - these are auto-injected and non-deletable
-export const SYSTEM_ATTRIBUTE_IDS = ['certificateId'];
+export const SYSTEM_ATTRIBUTE_IDS = ['certificateId', 'recipientName', 'generatedDate', 'qrCode'];
+
+// System attribute definitions for the editor
+export const SYSTEM_ATTRIBUTE_DEFS = {
+    certificateId: {
+        id: 'certificateId',
+        name: 'Certificate ID',
+        type: 'text' as const,
+        description: 'Auto-generated unique certificate identifier',
+    },
+    recipientName: {
+        id: 'recipientName',
+        name: 'Recipient Name',
+        type: 'text' as const,
+        description: 'Name of the certificate recipient',
+    },
+    generatedDate: {
+        id: 'generatedDate',
+        name: 'Generated Date',
+        type: 'date' as const,
+        description: 'Date when the certificate was generated',
+    },
+    qrCode: {
+        id: 'qrCode',
+        name: 'QR Code',
+        type: 'qr' as const,
+        description: 'Dynamic QR code generated from URL',
+    },
+};
 

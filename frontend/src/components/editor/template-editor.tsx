@@ -3,12 +3,18 @@
 /**
  * Template Editor
  * Main visual editor component for placing attributes on PDF templates
+ * 
+ * Supports system attributes:
+ * - certificateId: Auto-generated unique ID
+ * - recipientName: Name from data
+ * - generatedDate: Current date at generation time
+ * - qrCode: Dynamic QR code from URL
  */
 
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Plus, ZoomIn, ZoomOut, Undo, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Save, Plus, ZoomIn, ZoomOut, Undo, ChevronLeft, ChevronRight, QrCode, Type, Calendar, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -18,6 +24,7 @@ import { PropertyPanel } from './property-panel';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { updateTemplateAttributes, getViewUrl } from '@/lib/api';
 import type { Template, DynamicAttribute } from '@/types';
+import { SYSTEM_ATTRIBUTE_IDS, SYSTEM_ATTRIBUTE_DEFS } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { useSession } from 'next-auth/react';
 
@@ -56,31 +63,40 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
         []
     );
 
-    // Check if certificateId already exists
-    const hasCertificateId = attributes.some(a => a.id === 'certificateId');
+    // Check which system attributes are already placed
+    const hasSystemAttribute = (id: string) => attributes.some(a => a.id === id);
 
-    // Add Certificate ID attribute (system attribute)
-    const handleAddCertificateId = useCallback(() => {
-        if (hasCertificateId) return; // Prevent duplicates
+    // Add any system attribute
+    const handleAddSystemAttribute = useCallback((systemId: keyof typeof SYSTEM_ATTRIBUTE_DEFS) => {
+        if (hasSystemAttribute(systemId)) return; // Prevent duplicates
 
-        const certificateIdAttr: DynamicAttribute = {
-            id: 'certificateId',
-            name: 'Certificate ID',
-            placeholder: '{CertificateID}',
-            type: 'text',
-            required: true,
+        const def = SYSTEM_ATTRIBUTE_DEFS[systemId];
+        if (!def) return;
+
+        const isQR = def.type === 'qr';
+
+        const systemAttr: DynamicAttribute = {
+            id: def.id,
+            name: def.name,
+            placeholder: `{${def.name.replace(/\s+/g, '')}}`,
+            type: def.type,
+            required: systemId === 'recipientName',
             page: currentPage,
             x: pdfDimensions.width / 2,
-            y: 50, // Near bottom of page
-            fontSize: 12,
+            y: isQR ? pdfDimensions.height - 100 : pdfDimensions.height / 2,
+            fontSize: systemId === 'recipientName' ? 24 : 12,
             fontFamily: 'Helvetica',
-            fontWeight: 'normal',
+            fontWeight: systemId === 'recipientName' ? 'bold' : 'normal',
             color: '#000000',
             align: 'center',
+            isSystem: true,
+            // QR specific
+            ...(isQR ? { width: 80, height: 80, qrUrl: '' } : {}),
         };
-        setAttributes(prev => [...prev, certificateIdAttr]);
-        setSelectedId('certificateId');
-    }, [hasCertificateId, currentPage, pdfDimensions]);
+
+        setAttributes(prev => [...prev, systemAttr]);
+        setSelectedId(def.id);
+    }, [currentPage, pdfDimensions, attributes]);
 
     const handleAddAttribute = useCallback(() => {
         const newAttribute: DynamicAttribute = {
@@ -110,24 +126,31 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
             setAttributes((prev) =>
                 prev.map((a) => (a.id === selectedId ? { ...a, ...updates } : a))
             );
+            setHasChanges(true);
         },
         [selectedId]
     );
 
-    const handlePositionChange = useCallback(
-        (id: string, x: number, y: number) => {
-            setAttributes((prev) =>
-                prev.map((a) => (a.id === id ? { ...a, x, y } : a))
-            );
-        },
-        []
-    );
+    const handlePositionChange = useCallback((id: string, x: number, y: number) => {
+        setAttributes((prev) =>
+            prev.map((attr) => (attr.id === id ? { ...attr, x, y } : attr))
+        );
+        setHasChanges(true);
+    }, []);
+
+    const handleResizeChange = useCallback((id: string, width: number, height: number) => {
+        setAttributes((prev) =>
+            prev.map((attr) => (attr.id === id ? { ...attr, width, height } : attr))
+        );
+        setHasChanges(true);
+    }, []);
 
     const handleDeleteAttribute = useCallback(() => {
         if (!selectedId) return;
 
         setAttributes((prev) => prev.filter((a) => a.id !== selectedId));
         setSelectedId(null);
+        setHasChanges(true);
     }, [selectedId]);
 
     const handleSave = async () => {
@@ -221,6 +244,7 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                                     pdfHeight={pdfDimensions.height}
                                     onSelect={() => setSelectedId(attr.id)}
                                     onPositionChange={(x, y) => handlePositionChange(attr.id, x, y)}
+                                    onResizeChange={(w, h) => handleResizeChange(attr.id, w, h)}
                                     onDelete={() => {
                                         setAttributes((prev) => prev.filter((a) => a.id !== attr.id));
                                         if (selectedId === attr.id) setSelectedId(null);
@@ -247,26 +271,80 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
 
             {/* Toolbar */}
             <div className="mt-4 flex items-center justify-between rounded-xl border bg-card p-4 shadow-sm">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Custom Attribute Button */}
                     <Button onClick={handleAddAttribute} className="shadow-sm">
                         <Plus className="mr-2 h-4 w-4" />
-                        Add Attribute
+                        Add Custom
                     </Button>
-                    <Button
-                        onClick={handleAddCertificateId}
-                        variant={hasCertificateId ? "outline" : "secondary"}
-                        disabled={hasCertificateId}
-                        className="shadow-sm"
-                        title={hasCertificateId ? "Certificate ID already added" : "Add Certificate ID field"}
-                    >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Certificate ID
-                        {hasCertificateId && <span className="ml-1 text-xs">(Added)</span>}
-                    </Button>
-                    <div className="h-8 w-px bg-border" />
+
+                    <div className="h-8 w-px bg-border mx-2" />
+
+                    {/* System Attribute Buttons */}
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
+                            <Lock className="h-3 w-3" />
+                            System:
+                        </span>
+
+                        <Button
+                            onClick={() => handleAddSystemAttribute('certificateId')}
+                            variant={hasSystemAttribute('certificateId') ? "outline" : "secondary"}
+                            size="sm"
+                            disabled={hasSystemAttribute('certificateId')}
+                            className="h-8 text-xs"
+                            title="Auto-generated unique certificate identifier"
+                        >
+                            <Type className="mr-1 h-3 w-3" />
+                            ID
+                            {hasSystemAttribute('certificateId') && <span className="ml-1">✓</span>}
+                        </Button>
+
+                        <Button
+                            onClick={() => handleAddSystemAttribute('recipientName')}
+                            variant={hasSystemAttribute('recipientName') ? "outline" : "secondary"}
+                            size="sm"
+                            disabled={hasSystemAttribute('recipientName')}
+                            className="h-8 text-xs"
+                            title="Name of the certificate recipient"
+                        >
+                            <Type className="mr-1 h-3 w-3" />
+                            Name
+                            {hasSystemAttribute('recipientName') && <span className="ml-1">✓</span>}
+                        </Button>
+
+                        <Button
+                            onClick={() => handleAddSystemAttribute('generatedDate')}
+                            variant={hasSystemAttribute('generatedDate') ? "outline" : "secondary"}
+                            size="sm"
+                            disabled={hasSystemAttribute('generatedDate')}
+                            className="h-8 text-xs"
+                            title="Date when the certificate was generated"
+                        >
+                            <Calendar className="mr-1 h-3 w-3" />
+                            Date
+                            {hasSystemAttribute('generatedDate') && <span className="ml-1">✓</span>}
+                        </Button>
+
+                        <Button
+                            onClick={() => handleAddSystemAttribute('qrCode')}
+                            variant={hasSystemAttribute('qrCode') ? "outline" : "secondary"}
+                            size="sm"
+                            disabled={hasSystemAttribute('qrCode')}
+                            className="h-8 text-xs"
+                            title="Dynamic QR code generated from URL"
+                        >
+                            <QrCode className="mr-1 h-3 w-3" />
+                            QR
+                            {hasSystemAttribute('qrCode') && <span className="ml-1">✓</span>}
+                        </Button>
+                    </div>
+
+                    <div className="h-8 w-px bg-border mx-2" />
+
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="font-medium text-foreground">{attributes.length}</span>
-                        <span>attributes placed</span>
+                        <span>fields</span>
                     </div>
                 </div>
 

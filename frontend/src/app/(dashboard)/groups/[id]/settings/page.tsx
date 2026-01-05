@@ -16,7 +16,11 @@ import {
     Eye,
     EyeOff,
     Code,
-    LayoutTemplate
+    LayoutTemplate,
+    Users,
+    Trash2,
+    Send,
+    Copy
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,7 +51,17 @@ interface Spreadsheet {
     updatedAt: string;
 }
 
-type SettingsSection = 'general' | 'template' | 'datavault' | 'smtp' | 'email';
+type SettingsSection = 'general' | 'template' | 'datavault' | 'smtp' | 'email' | 'sharing';
+
+interface GroupShare {
+    id: string;
+    inviteeEmail: string;
+    inviteeId: string | null;
+    inviteeName: string | null;
+    status: 'pending' | 'accepted' | 'revoked';
+    createdAt: string;
+    acceptedAt: string | null;
+}
 
 export default function GroupSettingsPage() {
     const params = useParams();
@@ -104,6 +118,13 @@ export default function GroupSettingsPage() {
     const [emailTemplateHtml, setEmailTemplateHtml] = useState('');
     const [emailPreviewMode, setEmailPreviewMode] = useState<'edit' | 'preview'>('edit');
     const [isSavingEmail, setIsSavingEmail] = useState(false);
+
+    // Sharing state
+    const [shares, setShares] = useState<GroupShare[]>([]);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [isInviting, setIsInviting] = useState(false);
+    const [loadingShares, setLoadingShares] = useState(false);
+    const [inviteLink, setInviteLink] = useState<string | null>(null);
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -273,6 +294,28 @@ export default function GroupSettingsPage() {
         setSelectedTemplate(tpl || null);
     }, [selectedTemplateId, templates]);
 
+    // Load shares when sharing section is active
+    useEffect(() => {
+        const loadShares = async () => {
+            if (activeSection !== 'sharing' || !userId) return;
+            setLoadingShares(true);
+            try {
+                const res = await fetch(`${baseUrl}/api/groups/${groupId}/shares`, {
+                    headers: { 'x-user-id': userId },
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setShares(data.data);
+                }
+            } catch (error) {
+                console.error('Failed to load shares:', error);
+            }
+            setLoadingShares(false);
+        };
+        loadShares();
+    }, [activeSection, groupId, userId, baseUrl]);
+
+
     const handleSaveGeneral = async () => {
         if (!groupName) return;
         setIsSavingGeneral(true);
@@ -407,6 +450,7 @@ export default function GroupSettingsPage() {
         { id: 'datavault', label: 'Dataset', icon: Database },
         { id: 'smtp', label: 'SMTP Configuration', icon: Server },
         { id: 'email', label: 'Email Template', icon: Mail },
+        { id: 'sharing', label: 'Sharing', icon: Users },
     ];
 
     if (loading) {
@@ -609,30 +653,37 @@ export default function GroupSettingsPage() {
                                                     </Alert>
                                                 ) : (
                                                     <div className="grid gap-4">
-                                                        {selectedTemplate.attributes.filter(attr => attr.id !== 'certificateId').map((attr) => (
-                                                            <div key={attr.id} className="grid grid-cols-3 items-center gap-4">
-                                                                <Label className="col-span-1">
-                                                                    {attr.name} {attr.required && <span className="text-destructive">*</span>}
-                                                                </Label>
-                                                                <div className="col-span-2">
-                                                                    <Select value={columnMapping[attr.id] || '__skip__'}
-                                                                        onValueChange={(val) => setColumnMapping(prev => {
-                                                                            const n = { ...prev };
-                                                                            if (val === '__skip__') delete n[attr.id]; else n[attr.id] = val;
-                                                                            return n;
-                                                                        })}
-                                                                    >
-                                                                        <SelectTrigger>
-                                                                            <SelectValue placeholder="Select column" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
-                                                                            {sheetColumns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
-                                                                        </SelectContent>
-                                                                    </Select>
+                                                        {/* Filter out system attributes that are auto-generated and don't need mapping:
+                                                            - certificateId: auto-generated from template code + email
+                                                            - generatedDate: auto-generated at certificate creation time
+                                                            - qrCode: URL is stored in template editor, not from spreadsheet
+                                                        */}
+                                                        {selectedTemplate.attributes
+                                                            .filter(attr => !['certificateId', 'generatedDate', 'qrCode'].includes(attr.id))
+                                                            .map((attr) => (
+                                                                <div key={attr.id} className="grid grid-cols-3 items-center gap-4">
+                                                                    <Label className="col-span-1">
+                                                                        {attr.name} {attr.required && <span className="text-destructive">*</span>}
+                                                                    </Label>
+                                                                    <div className="col-span-2">
+                                                                        <Select value={columnMapping[attr.id] || '__skip__'}
+                                                                            onValueChange={(val) => setColumnMapping(prev => {
+                                                                                const n = { ...prev };
+                                                                                if (val === '__skip__') delete n[attr.id]; else n[attr.id] = val;
+                                                                                return n;
+                                                                            })}
+                                                                        >
+                                                                            <SelectTrigger>
+                                                                                <SelectValue placeholder="Select column" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="__skip__">-- Not Mapped --</SelectItem>
+                                                                                {sheetColumns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            ))}
                                                         <Separator className="my-2" />
                                                         <div className="grid grid-cols-3 items-center gap-4">
                                                             <Label className="col-span-1">Email Address <span className="text-xs text-muted-foreground">(for sending)</span></Label>
@@ -850,6 +901,173 @@ export default function GroupSettingsPage() {
                                     Save Email Template
                                 </Button>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ============== SHARING SECTION ============== */}
+                    {activeSection === 'sharing' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h1 className="text-2xl font-bold">Sharing</h1>
+                                <p className="text-muted-foreground">Invite users to collaborate on this group</p>
+                            </div>
+                            <Separator />
+
+                            {/* Invite User Card */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Invite User</CardTitle>
+                                    <CardDescription>
+                                        Enter the email address of the user you want to invite.
+                                        They will receive full collaborative access to this group.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="flex gap-3">
+                                        <div className="flex-1">
+                                            <Input
+                                                type="email"
+                                                placeholder="user@example.com"
+                                                value={inviteEmail}
+                                                onChange={(e) => setInviteEmail(e.target.value)}
+                                            />
+                                        </div>
+                                        <Button
+                                            onClick={async () => {
+                                                if (!inviteEmail.trim()) return;
+                                                setIsInviting(true);
+                                                try {
+                                                    const res = await fetch(`${baseUrl}/api/groups/${groupId}/shares/invite`, {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Content-Type': 'application/json',
+                                                            'x-user-id': userId || '',
+                                                        },
+                                                        body: JSON.stringify({ email: inviteEmail }),
+                                                    });
+                                                    const data = await res.json();
+                                                    if (data.success) {
+                                                        toast.success('Invitation sent successfully');
+                                                        setInviteEmail('');
+                                                        setInviteLink(data.data.inviteLink);
+                                                        // Reload shares
+                                                        const sharesRes = await fetch(`${baseUrl}/api/groups/${groupId}/shares`, {
+                                                            headers: { 'x-user-id': userId || '' },
+                                                        });
+                                                        const sharesData = await sharesRes.json();
+                                                        if (sharesData.success) setShares(sharesData.data);
+                                                    } else {
+                                                        toast.error(data.error || 'Failed to send invitation');
+                                                    }
+                                                } catch (error) {
+                                                    toast.error('Failed to send invitation');
+                                                } finally {
+                                                    setIsInviting(false);
+                                                }
+                                            }}
+                                            disabled={isInviting || !inviteEmail.trim()}
+                                        >
+                                            {isInviting ? (
+                                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <Send className="mr-2 h-4 w-4" />
+                                            )}
+                                            Send Invite
+                                        </Button>
+                                    </div>
+
+                                    {inviteLink && (
+                                        <Alert>
+                                            <AlertDescription className="flex items-center justify-between gap-2">
+                                                <span className="text-sm truncate flex-1">
+                                                    Invite link: <span className="font-mono text-xs">{inviteLink}</span>
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(inviteLink);
+                                                        toast.success('Link copied to clipboard');
+                                                    }}
+                                                >
+                                                    <Copy className="h-4 w-4" />
+                                                </Button>
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+                                </CardContent>
+                            </Card>
+
+                            {/* Shared Users List */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Shared With</CardTitle>
+                                    <CardDescription>
+                                        Users who have access to this group
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {shares.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground text-center py-8">
+                                            No users have been invited yet.
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {shares.map((share) => (
+                                                <div
+                                                    key={share.id}
+                                                    className="flex items-center justify-between p-3 rounded-lg border"
+                                                >
+                                                    <div className="flex-1">
+                                                        <p className="font-medium">
+                                                            {share.inviteeName || share.inviteeEmail}
+                                                        </p>
+                                                        {share.inviteeName && (
+                                                            <p className="text-sm text-muted-foreground">
+                                                                {share.inviteeEmail}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <Badge
+                                                            variant={share.status === 'accepted' ? 'default' : 'secondary'}
+                                                        >
+                                                            {share.status === 'pending' ? 'Pending' : 'Active'}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const res = await fetch(
+                                                                        `${baseUrl}/api/groups/${groupId}/shares/${share.id}`,
+                                                                        {
+                                                                            method: 'DELETE',
+                                                                            headers: { 'x-user-id': userId || '' },
+                                                                        }
+                                                                    );
+                                                                    const data = await res.json();
+                                                                    if (data.success) {
+                                                                        toast.success('Access revoked');
+                                                                        setShares(shares.filter(s => s.id !== share.id));
+                                                                    } else {
+                                                                        toast.error('Failed to revoke access');
+                                                                    }
+                                                                } catch (error) {
+                                                                    toast.error('Failed to revoke access');
+                                                                }
+                                                            }}
+                                                            className="text-destructive hover:text-destructive"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
                         </div>
                     )}
 

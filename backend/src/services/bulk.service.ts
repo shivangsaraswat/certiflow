@@ -262,7 +262,8 @@ async function processBatch(
 
             // Generate Certificate ID using template code and email
             const certId = generateCertificateCode(template.code, recipientEmail);
-            const filename = `${certId}.pdf`;
+            // Append timestamp to filename to prevent caching issues
+            const filename = `${certId}_${Date.now()}.pdf`;
 
             // Inject certificateId into certData for rendering
             certData['certificateId'] = certId;
@@ -277,8 +278,39 @@ async function processBatch(
             // Add Buffer to ZIP stream
             archive.append(pdfBuffer, { name: filename });
 
-            // Track in Database - find recipient name from first text attribute
-            const recipientName = certData[template.attributes[0]?.id] || 'Unknown';
+            // Track in Database - find recipient name from mapped name attribute
+            // Look for the attribute that represents 'name' - check for 'name' in attribute ID or name
+            // columnMapping is { sourceColumn: attrId }, so we need to find the attrId that is for 'name'
+            let recipientName = 'Unknown';
+
+            // First, try to find an attribute with 'name' in its ID (case-insensitive)
+            for (const [sourceColumn, attrId] of Object.entries(columnMapping)) {
+                if (attrId.toLowerCase().includes('name') && attrId !== 'certificateId') {
+                    recipientName = certData[attrId] || 'Unknown';
+                    break;
+                }
+            }
+
+            // If still unknown, try to find from template attributes that have 'name' in their name
+            if (recipientName === 'Unknown') {
+                for (const attr of template.attributes) {
+                    if (attr.id !== 'certificateId' &&
+                        (attr.name.toLowerCase().includes('name') || attr.id.toLowerCase().includes('name'))) {
+                        recipientName = certData[attr.id] || 'Unknown';
+                        break;
+                    }
+                }
+            }
+
+            // Final fallback: use first non-certificateId attribute value
+            if (recipientName === 'Unknown') {
+                for (const attr of template.attributes) {
+                    if (attr.id !== 'certificateId' && certData[attr.id]) {
+                        recipientName = certData[attr.id];
+                        break;
+                    }
+                }
+            }
 
             await createCertificateRecord({
                 certificateCode: certId,

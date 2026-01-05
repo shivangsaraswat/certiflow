@@ -3,15 +3,23 @@
  * 
  * Updated for dynamic, user-defined attributes.
  * Iterates over the template's attribute array and overlays each one.
+ * 
+ * Supports system attributes:
+ * - certificateId: Auto-generated unique ID
+ * - recipientName: Name from data
+ * - generatedDate: Current date at generation time
+ * - qrCode: Dynamic QR code from URL template
  */
 
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from 'pdf-lib';
+import QRCode from 'qrcode';
 import {
     Template,
     CertificateData,
     DynamicAttribute,
     isTextAttribute,
     isSignatureAttribute,
+    isQRCodeAttribute,
     FONT_MAPPING,
     SupportedFont
 } from '../types/index.js';
@@ -38,22 +46,56 @@ export async function renderCertificate(
     // 3. Get pages
     const pages = pdfDoc.getPages();
 
-    // 4. Auto-inject Certificate ID if template has the attribute
+    // 4. Auto-inject system attribute values
+    console.log('[Renderer] Template attributes:', template.attributes.map(a => ({ id: a.id, type: a.type })));
+
+    // Certificate ID - auto-generate if not provided
     const hasCertIdAttr = template.attributes.some(a => a.id === 'certificateId');
+    console.log(`[Renderer] hasCertIdAttr: ${hasCertIdAttr}`);
     if (hasCertIdAttr && !data['certificateId']) {
         data['certificateId'] = generateCertificateCode(template.code, recipientEmail);
+        console.log(`[Renderer] Auto-generated certificateId: ${data['certificateId']}`);
+    }
+
+    // Generated Date - always use current date/time
+    const hasGenDateAttr = template.attributes.some(a => a.id === 'generatedDate');
+    console.log(`[Renderer] hasGenDateAttr: ${hasGenDateAttr}`);
+    if (hasGenDateAttr && !data['generatedDate']) {
+        data['generatedDate'] = new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        console.log(`[Renderer] Auto-generated generatedDate: ${data['generatedDate']}`);
     }
 
     // 5. Process each attribute from the template
-    for (const attr of template.attributes) {
-        const value = data[attr.id];
+    console.log('[Renderer] Processing', template.attributes.length, 'attributes');
+    console.log('[Renderer] Data keys:', Object.keys(data));
 
-        if (!value && attr.required) {
-            console.warn(`Missing required value for attribute: ${attr.name}`);
+    for (const attr of template.attributes) {
+        console.log(`[Renderer] Processing attr: ${attr.id} (type: ${attr.type})`);
+
+        // Handle QR Code separately
+        if (isQRCodeAttribute(attr)) {
+            console.log(`[Renderer] Drawing QR code for ${attr.id}, qrUrl: ${attr.qrUrl}`);
+            await drawQRCode(pdfDoc, pages, attr, data);
             continue;
         }
 
-        if (!value) continue;
+        const value = data[attr.id];
+
+        if (!value && attr.required) {
+            console.warn(`[Renderer] Missing required value for attribute: ${attr.name} (id: ${attr.id})`);
+            continue;
+        }
+
+        if (!value) {
+            console.log(`[Renderer] Skipping ${attr.id} - no value found`);
+            continue;
+        }
+
+        console.log(`[Renderer] Drawing ${attr.id} with value: ${value.substring(0, 50)}...`);
 
         if (isTextAttribute(attr)) {
             await drawText(pages, attr, value, fonts);
@@ -157,6 +199,11 @@ async function drawText(
 
     const lineHeight = fontSize * 1.2;
 
+    // Log the page size and first position
+    const pageHeight = page.getHeight();
+    const pageWidth = page.getWidth();
+    console.log(`[Renderer] Text '${text.substring(0, 20)}...' position: x=${attr.x}, y=${attr.y}, page: ${pageWidth}x${pageHeight}`);
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         let x = attr.x;
@@ -246,15 +293,100 @@ async function drawSignature(
             image = await pdfDoc.embedJpg(signatureBuffer);
         }
 
+        // Calculate X based on alignment
+        let x = attr.x;
+        const width = attr.width || 120;
+
+        if (attr.align === 'center') {
+            x = attr.x - width / 2;
+        } else if (attr.align === 'right') {
+            x = attr.x - width;
+        }
+
         // Draw the image at the specified position and size
         page.drawImage(image, {
-            x: attr.x,
+            x: x,
             y: attr.y,
-            width: attr.width || 120,
+            width: width,
             height: attr.height || 60,
         });
     } catch (error) {
         console.warn(`Could not load signature: ${signatureFilename}`, error);
+    }
+}
+
+/**
+ * Draw a QR code on a PDF page
+ * Generates QR from URL template, replacing placeholders with actual data
+ */
+async function drawQRCode(
+    pdfDoc: PDFDocument,
+    pages: PDFPage[],
+    attr: DynamicAttribute,
+    data: CertificateData
+): Promise<void> {
+    try {
+        // Get the correct page
+        const pageIndex = (attr.page || 1) - 1;
+        if (pageIndex < 0 || pageIndex >= pages.length) {
+            console.warn(`Page ${attr.page} does not exist in template`);
+            return;
+        }
+
+        const page = pages[pageIndex];
+
+        // Get QR URL from attribute and resolve placeholders
+        let qrUrl = attr.qrUrl || '';
+
+        if (!qrUrl) {
+            console.warn('QR Code attribute has no URL configured');
+            return;
+        }
+
+        // Replace placeholders like {certificateId} with actual values
+        for (const [key, value] of Object.entries(data)) {
+            if (value) {
+                qrUrl = qrUrl.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+            }
+        }
+
+        // Generate QR code as PNG buffer
+        const qrBuffer = await QRCode.toBuffer(qrUrl, {
+            type: 'png',
+            width: attr.width || 80,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+        });
+
+        // Embed and draw QR image
+        const qrImage = await pdfDoc.embedPng(qrBuffer);
+
+        const pageHeight = page.getHeight();
+        const pageWidth = page.getWidth();
+
+        console.log(`[Renderer] QR position: x=${attr.x}, y=${attr.y}, page size: ${pageWidth}x${pageHeight}`);
+        console.log(`[Renderer] QR dimensions: ${attr.width || 80}x${attr.height || 80}`);
+
+        // Calculate X based on alignment
+        let x = attr.x;
+        const width = attr.width || 80;
+
+        if (attr.align === 'center') {
+            x = attr.x - width / 2;
+        } else if (attr.align === 'right') {
+            x = attr.x - width;
+        }
+
+        page.drawImage(qrImage, {
+            x: x,
+            y: attr.y,
+            width: width,
+            height: attr.height || 80,
+        });
+
+        console.log('[Renderer] QR code drawn successfully');
+    } catch (error) {
+        console.error('[Renderer] Could not generate QR code:', error);
     }
 }
 

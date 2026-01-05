@@ -64,6 +64,40 @@ export const groupsRelations = relations(groups, ({ one, many }) => ({
     }),
     mailJobs: many(mailJobs),
     mailLogs: many(mailLogs),
+    shares: many(groupShares),
+}));
+
+// =============================================================================
+// Group Shares - Collaborative access & invitations
+// =============================================================================
+export const groupShares = pgTable('group_shares', {
+    id: text('id').primaryKey(),
+    groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+    inviterId: text('inviter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    inviteeId: text('invitee_id').references(() => users.id, { onDelete: 'cascade' }),
+    inviteeEmail: text('invitee_email').notNull(),
+    status: text('status').notNull().default('pending'), // 'pending' | 'accepted' | 'revoked'
+    inviteToken: text('invite_token').unique(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    acceptedAt: timestamp('accepted_at'),
+    revokedAt: timestamp('revoked_at'),
+});
+
+export const groupSharesRelations = relations(groupShares, ({ one }) => ({
+    group: one(groups, {
+        fields: [groupShares.groupId],
+        references: [groups.id],
+    }),
+    inviter: one(users, {
+        fields: [groupShares.inviterId],
+        references: [users.id],
+        relationName: 'inviter',
+    }),
+    invitee: one(users, {
+        fields: [groupShares.inviteeId],
+        references: [users.id],
+        relationName: 'invitee',
+    }),
 }));
 
 // =============================================================================

@@ -1,11 +1,19 @@
 
+
 export interface DynamicAttribute {
     id: string; // Unique ID for the attribute
     name: string; // Display name (e.g., "Student Name")
     key: string; // unique key for data mapping (e.g., "recipient_name")
-    type: 'text' | 'image' | 'qrcode' | 'date';
+    type: 'text' | 'image' | 'qrcode' | 'date' | 'qr';
     defaultValue?: string;
     description?: string;
+
+    // System attribute flag - cannot be renamed or deleted
+    isSystem?: boolean;
+
+    // For QR code type - URL template with optional placeholders
+    // e.g., "https://verify.example.com/{certificateId}"
+    qrUrl?: string;
 
     // Positioning and Style
     x: number; // Percentage (0-100)
@@ -265,3 +273,6 @@ export function isSignatureAttribute(attr: DynamicAttribute): boolean {
     return attr.type === 'image';
 }
 
+export function isQRCodeAttribute(attr: DynamicAttribute): boolean {
+    return attr.type === 'qr' || attr.type === 'qrcode';
+}

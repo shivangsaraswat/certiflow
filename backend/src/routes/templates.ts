@@ -13,7 +13,9 @@ import {
     deleteAttribute
 } from '../services/template.service.js';
 import { uploadConfig } from '../middleware/upload.js';
-import { ApiResponse } from '../types/index.js';
+import { ApiResponse, DynamicAttribute } from '../types/index.js';
+import { SYSTEM_ATTRIBUTE_IDS, isSystemAttribute } from '../config/system-attributes.js';
+
 
 const router = Router();
 const upload = multer(uploadConfig);
@@ -141,6 +143,15 @@ router.put('/:id/attributes', async (req, res) => {
         const { attributes } = req.body;
         if (!Array.isArray(attributes)) {
             return res.status(400).json({ success: false, error: 'Attributes must be an array' });
+        }
+
+        // Validate: User-created attributes cannot use system attribute IDs
+        // System attributes (with matching IDs) are allowed - just ensure they're marked correctly
+        for (const attr of attributes as DynamicAttribute[]) {
+            if (isSystemAttribute(attr.id)) {
+                // This is a system attribute ID - mark it as system to ensure consistency
+                attr.isSystem = true;
+            }
         }
 
         const template = await updateAllAttributes(req.params.id, userId, attributes);

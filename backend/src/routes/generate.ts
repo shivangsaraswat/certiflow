@@ -39,7 +39,8 @@ router.post('/single', async (req, res) => {
 
         // Generate Code & Filename using email for hash
         const certificateCode = generateCertificateCode(template.code, recipientEmail);
-        const filename = `${certificateCode}.pdf`;
+        // Append timestamp to filename to prevent caching issues
+        const filename = `${certificateCode}_${Date.now()}.pdf`;
 
         // Inject certificateId into data for rendering
         const renderData = { ...data, certificateId: certificateCode };
