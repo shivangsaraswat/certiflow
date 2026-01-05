@@ -14,12 +14,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Plus, ZoomIn, ZoomOut, Undo, ChevronLeft, ChevronRight, QrCode, Type, Calendar, Lock } from 'lucide-react';
+import { ArrowLeft, Save, Plus, ZoomIn, ZoomOut, Undo, ChevronLeft, ChevronRight, QrCode, Type, Calendar, Lock, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { PDFViewer } from './pdf-viewer';
-import { AttributeOverlay } from './attribute-overlay';
+import { EditorCanvas } from './editor-canvas';
 import { PropertyPanel } from './property-panel';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { updateTemplateAttributes, getViewUrl } from '@/lib/api';
@@ -201,6 +200,13 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                     {hasChanges && (
                         <Badge variant="secondary">Unsaved changes</Badge>
                     )}
+                    <Button
+                        variant="outline"
+                        onClick={() => router.push(`/templates/${template.id}/preview`)}
+                    >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Preview
+                    </Button>
                     <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
                         {isSaving ? (
                             <>
@@ -227,33 +233,24 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
             {/* Main Editor */}
             <div className="flex flex-1 gap-4 overflow-hidden">
                 {/* PDF Canvas Area */}
-                <div className="flex-1 overflow-auto rounded-lg border bg-muted/30 p-4">
-                    <div className="inline-block min-w-full">
-                        <PDFViewer
-                            url={pdfUrl}
-                            pageNumber={currentPage}
-                            scale={scale}
-                            onLoadSuccess={handlePdfLoad}
-                        >
-                            {pageAttributes.map((attr) => (
-                                <AttributeOverlay
-                                    key={attr.id}
-                                    attribute={attr}
-                                    isSelected={selectedId === attr.id}
-                                    scale={scale}
-                                    pdfHeight={pdfDimensions.height}
-                                    onSelect={() => setSelectedId(attr.id)}
-                                    onPositionChange={(x, y) => handlePositionChange(attr.id, x, y)}
-                                    onResizeChange={(w, h) => handleResizeChange(attr.id, w, h)}
-                                    onDelete={() => {
-                                        setAttributes((prev) => prev.filter((a) => a.id !== attr.id));
-                                        if (selectedId === attr.id) setSelectedId(null);
-                                    }}
-                                />
-                            ))}
-                        </PDFViewer>
-                    </div>
-                </div>
+                {/* PDF Canvas Area */}
+                <EditorCanvas
+                    pdfUrl={pdfUrl}
+                    scale={scale}
+                    currentPage={currentPage}
+                    attributes={attributes}
+                    selectedId={selectedId}
+                    pdfDimensions={pdfDimensions}
+                    onPdfLoad={handlePdfLoad}
+                    onSelectAttribute={setSelectedId}
+                    onAttributePositionChange={handlePositionChange}
+                    onAttributeResizeChange={handleResizeChange}
+                    onDeleteAttribute={(id) => {
+                        setAttributes((prev) => prev.filter((a) => a.id !== id));
+                        if (selectedId === id) setSelectedId(null);
+                        setHasChanges(true); // Deleting is a change
+                    }}
+                />
 
                 {/* Property Panel */}
                 <div className="shrink-0 h-full border-l bg-background">
