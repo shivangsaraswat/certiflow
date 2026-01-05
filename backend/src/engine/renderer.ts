@@ -293,11 +293,21 @@ async function drawSignature(
             image = await pdfDoc.embedJpg(signatureBuffer);
         }
 
+        // Calculate X based on alignment
+        let x = attr.x;
+        const width = attr.width || 120;
+
+        if (attr.align === 'center') {
+            x = attr.x - width / 2;
+        } else if (attr.align === 'right') {
+            x = attr.x - width;
+        }
+
         // Draw the image at the specified position and size
         page.drawImage(image, {
-            x: attr.x,
+            x: x,
             y: attr.y,
-            width: attr.width || 120,
+            width: width,
             height: attr.height || 60,
         });
     } catch (error) {
@@ -357,10 +367,20 @@ async function drawQRCode(
         console.log(`[Renderer] QR position: x=${attr.x}, y=${attr.y}, page size: ${pageWidth}x${pageHeight}`);
         console.log(`[Renderer] QR dimensions: ${attr.width || 80}x${attr.height || 80}`);
 
+        // Calculate X based on alignment
+        let x = attr.x;
+        const width = attr.width || 80;
+
+        if (attr.align === 'center') {
+            x = attr.x - width / 2;
+        } else if (attr.align === 'right') {
+            x = attr.x - width;
+        }
+
         page.drawImage(qrImage, {
-            x: attr.x,
+            x: x,
             y: attr.y,
-            width: attr.width || 80,
+            width: width,
             height: attr.height || 80,
         });
 

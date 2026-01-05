@@ -126,24 +126,31 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
             setAttributes((prev) =>
                 prev.map((a) => (a.id === selectedId ? { ...a, ...updates } : a))
             );
+            setHasChanges(true);
         },
         [selectedId]
     );
 
-    const handlePositionChange = useCallback(
-        (id: string, x: number, y: number) => {
-            setAttributes((prev) =>
-                prev.map((a) => (a.id === id ? { ...a, x, y } : a))
-            );
-        },
-        []
-    );
+    const handlePositionChange = useCallback((id: string, x: number, y: number) => {
+        setAttributes((prev) =>
+            prev.map((attr) => (attr.id === id ? { ...attr, x, y } : attr))
+        );
+        setHasChanges(true);
+    }, []);
+
+    const handleResizeChange = useCallback((id: string, width: number, height: number) => {
+        setAttributes((prev) =>
+            prev.map((attr) => (attr.id === id ? { ...attr, width, height } : attr))
+        );
+        setHasChanges(true);
+    }, []);
 
     const handleDeleteAttribute = useCallback(() => {
         if (!selectedId) return;
 
         setAttributes((prev) => prev.filter((a) => a.id !== selectedId));
         setSelectedId(null);
+        setHasChanges(true);
     }, [selectedId]);
 
     const handleSave = async () => {
@@ -237,6 +244,7 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
                                     pdfHeight={pdfDimensions.height}
                                     onSelect={() => setSelectedId(attr.id)}
                                     onPositionChange={(x, y) => handlePositionChange(attr.id, x, y)}
+                                    onResizeChange={(w, h) => handleResizeChange(attr.id, w, h)}
                                     onDelete={() => {
                                         setAttributes((prev) => prev.filter((a) => a.id !== attr.id));
                                         if (selectedId === attr.id) setSelectedId(null);
