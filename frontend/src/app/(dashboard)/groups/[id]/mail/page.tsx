@@ -51,6 +51,7 @@ interface Participant {
     email: string;
     name: string;
     data: Record<string, string>;
+    certificateId: string;
 }
 
 interface MailJob {

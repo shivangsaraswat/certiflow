@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, FolderKanban, Trash2, Settings2 } from 'lucide-react';
+import { Plus, FolderKanban, Trash2, Settings2, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -132,22 +132,30 @@ export default function GroupsPage() {
                                                 <CardDescription className="mt-1 line-clamp-2">{group.description}</CardDescription>
                                             )}
                                         </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                handleDeleteGroup(group.id);
-                                            }}
-                                        >
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
+                                        {(group as any).isOwner !== false && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleDeleteGroup(group.id);
+                                                }}
+                                            >
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </CardHeader>
                                 <CardContent className="pt-0">
                                     <div className="flex flex-wrap gap-2 mt-2">
+                                        {(group as any).sharedBy && (
+                                            <Badge variant="secondary" className="text-xs gap-1">
+                                                <Share2 className="h-3 w-3" />
+                                                Shared by {(group as any).sharedBy}
+                                            </Badge>
+                                        )}
                                         {group.template ? (
                                             <Badge variant="secondary" className="text-xs">
                                                 {group.template.code}

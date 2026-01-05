@@ -13,6 +13,7 @@ const router = Router();
 
 /**
  * POST /api/groups/:groupId/mail/send - Start a mail job
+ * Accessible to both owner and shared users
  */
 router.post('/:groupId/mail/send', async (req, res) => {
     try {
@@ -22,11 +23,18 @@ router.post('/:groupId/mail/send', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(groupId, userId);
+
+        if (!access.hasAccess) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Get the group
         const existing = await db
             .select()
             .from(groups)
-            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
+            .where(eq(groups.id, groupId));
 
         if (!existing[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
@@ -78,6 +86,7 @@ router.post('/:groupId/mail/send', async (req, res) => {
 
 /**
  * GET /api/groups/:groupId/mail/jobs/:jobId - Get mail job status
+ * Accessible to both owner and shared users
  */
 router.get('/:groupId/mail/jobs/:jobId', async (req, res) => {
     try {
@@ -86,13 +95,10 @@ router.get('/:groupId/mail/jobs/:jobId', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(groupId, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
@@ -123,6 +129,7 @@ router.get('/:groupId/mail/jobs/:jobId', async (req, res) => {
 
 /**
  * GET /api/groups/:groupId/mail/history - Get mail history
+ * Accessible to both owner and shared users
  */
 router.get('/:groupId/mail/history', async (req, res) => {
     try {
@@ -133,13 +140,10 @@ router.get('/:groupId/mail/history', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(sql`${groups.id} = ${groupId} AND ${groups.userId} = ${userId}`);
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(groupId, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 

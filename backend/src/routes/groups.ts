@@ -6,8 +6,8 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db.js';
-import { groups, certificates, templates, bulkJobs, spreadsheets, groupSmtpConfig } from '../db/schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { groups, certificates, templates, bulkJobs, spreadsheets, groupSmtpConfig, groupShares, users } from '../db/schema.js';
+import { eq, desc, and, or, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 const router = Router();
@@ -18,13 +18,15 @@ const router = Router();
 
 /**
  * GET /api/groups - List all groups with certificate counts
+ * Includes both owned groups and groups shared with the user
  */
 router.get('/', async (req, res) => {
     try {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        const allGroups = await db
+        // Get owned groups
+        const ownedGroups = await db
             .select({
                 id: groups.id,
                 name: groups.name,
@@ -32,41 +34,96 @@ router.get('/', async (req, res) => {
                 templateId: groups.templateId,
                 createdAt: groups.createdAt,
                 updatedAt: groups.updatedAt,
+                ownerId: groups.userId,
             })
             .from(groups)
             .where(eq(groups.userId, userId))
             .orderBy(desc(groups.createdAt));
 
+        // Get shared groups (accepted shares)
+        const sharedGroupIds = await db
+            .select({ groupId: groupShares.groupId, inviterId: groupShares.inviterId })
+            .from(groupShares)
+            .where(
+                and(
+                    eq(groupShares.inviteeId, userId),
+                    eq(groupShares.status, 'accepted')
+                )
+            );
+
+        let sharedGroups: any[] = [];
+        if (sharedGroupIds.length > 0) {
+            const ids = sharedGroupIds.map(s => s.groupId);
+            sharedGroups = await db
+                .select({
+                    id: groups.id,
+                    name: groups.name,
+                    description: groups.description,
+                    templateId: groups.templateId,
+                    createdAt: groups.createdAt,
+                    updatedAt: groups.updatedAt,
+                    ownerId: groups.userId,
+                })
+                .from(groups)
+                .where(inArray(groups.id, ids))
+                .orderBy(desc(groups.createdAt));
+        }
+
         // Get template info and certificate counts for each group
-        const result = await Promise.all(
-            allGroups.map(async (group) => {
-                let template = null;
-                if (group.templateId) {
-                    const templateResult = await db
-                        .select({
-                            id: templates.id,
-                            name: templates.name,
-                            code: templates.code,
-                        })
-                        .from(templates)
-                        .where(eq(templates.id, group.templateId));
-                    template = templateResult[0] || null;
-                }
+        const processGroup = async (group: any, isOwner: boolean, inviterId?: string) => {
+            let template = null;
+            if (group.templateId) {
+                const templateResult = await db
+                    .select({
+                        id: templates.id,
+                        name: templates.name,
+                        code: templates.code,
+                    })
+                    .from(templates)
+                    .where(eq(templates.id, group.templateId));
+                template = templateResult[0] || null;
+            }
 
-                const certCount = await db
-                    .select({ count: sql<number>`count(*)::int` })
-                    .from(certificates)
-                    .where(eq(certificates.groupId, group.id));
+            const certCount = await db
+                .select({ count: sql<number>`count(*)::int` })
+                .from(certificates)
+                .where(eq(certificates.groupId, group.id));
 
-                return {
-                    ...group,
-                    template,
-                    certificateCount: certCount[0]?.count || 0,
-                };
+            let sharedBy = null;
+            if (!isOwner && inviterId) {
+                const inviter = await db
+                    .select({ name: users.name })
+                    .from(users)
+                    .where(eq(users.id, inviterId));
+                sharedBy = inviter[0]?.name || 'Unknown';
+            }
+
+            return {
+                ...group,
+                template,
+                certificateCount: certCount[0]?.count || 0,
+                isOwner,
+                sharedBy,
+            };
+        };
+
+        const ownedResult = await Promise.all(
+            ownedGroups.map(group => processGroup(group, true))
+        );
+
+        const sharedResult = await Promise.all(
+            sharedGroups.map(group => {
+                const shareInfo = sharedGroupIds.find(s => s.groupId === group.id);
+                return processGroup(group, false, shareInfo?.inviterId);
             })
         );
 
-        res.json({ success: true, data: result });
+        // Combine and sort by createdAt
+        const allGroups = [...ownedResult, ...sharedResult].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        res.json({ success: true, data: allGroups });
     } catch (error) {
         console.error('Error fetching groups:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch groups' });
@@ -129,6 +186,7 @@ router.post('/', async (req, res) => {
 
 /**
  * GET /api/groups/:id - Get group details with template
+ * Accessible to both owner and shared users
  */
 router.get('/:id', async (req, res) => {
     try {
@@ -137,12 +195,18 @@ router.get('/:id', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+        // Import hasGroupAccess dynamically to avoid circular dependency
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
+
+        if (!access.hasAccess) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
         const group = await db
             .select()
             .from(groups)
-            .where(
-                sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`
-            );
+            .where(eq(groups.id, id));
 
         if (!group[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
@@ -208,6 +272,7 @@ router.get('/:id', async (req, res) => {
 
 /**
  * PUT /api/groups/:id - Update group
+ * Accessible to both owner and shared users
  */
 router.put('/:id', async (req, res) => {
     try {
@@ -217,12 +282,17 @@ router.put('/:id', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
+
+        if (!access.hasAccess) {
+            return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
         const existing = await db
             .select()
             .from(groups)
-            .where(
-                sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`
-            );
+            .where(eq(groups.id, id));
 
         if (!existing[0]) {
             return res.status(404).json({ success: false, error: 'Group not found' });
@@ -245,7 +315,7 @@ router.put('/:id', async (req, res) => {
 });
 
 /**
- * DELETE /api/groups/:id - Delete group
+ * DELETE /api/groups/:id - Delete group (Owner only)
  */
 router.delete('/:id', async (req, res) => {
     try {
@@ -254,15 +324,16 @@ router.delete('/:id', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(
-                sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`
-            );
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+
+        // Only owner can delete
+        if (!access.isOwner) {
+            return res.status(403).json({ success: false, error: 'Only the group owner can delete the group' });
         }
 
         await db.delete(groups).where(eq(groups.id, id));
@@ -280,6 +351,7 @@ router.delete('/:id', async (req, res) => {
 
 /**
  * PUT /api/groups/:id/settings/template - Update template selection
+ * Accessible to both owner and shared users
  */
 router.put('/:id/settings/template', async (req, res) => {
     try {
@@ -289,13 +361,10 @@ router.put('/:id/settings/template', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
@@ -328,6 +397,7 @@ router.put('/:id/settings/template', async (req, res) => {
 
 /**
  * PUT /api/groups/:id/settings/data - Update data vault configuration
+ * Accessible to both owner and shared users
  */
 router.put('/:id/settings/data', async (req, res) => {
     try {
@@ -337,13 +407,10 @@ router.put('/:id/settings/data', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
@@ -378,6 +445,7 @@ router.put('/:id/settings/data', async (req, res) => {
 
 /**
  * PUT /api/groups/:id/settings/email-template - Update email template
+ * Accessible to both owner and shared users
  */
 router.put('/:id/settings/email-template', async (req, res) => {
     try {
@@ -387,13 +455,10 @@ router.put('/:id/settings/email-template', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
@@ -415,6 +480,7 @@ router.put('/:id/settings/email-template', async (req, res) => {
 
 /**
  * PUT /api/groups/:id/settings/smtp - Save SMTP configuration
+ * Accessible to both owner and shared users
  */
 router.put('/:id/settings/smtp', async (req, res) => {
     try {
@@ -424,13 +490,10 @@ router.put('/:id/settings/smtp', async (req, res) => {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-        // Verify group ownership
-        const existing = await db
-            .select()
-            .from(groups)
-            .where(sql`${groups.id} = ${id} AND ${groups.userId} = ${userId}`);
+        const { hasGroupAccess } = await import('./shares.js');
+        const access = await hasGroupAccess(id, userId);
 
-        if (!existing[0]) {
+        if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
 
