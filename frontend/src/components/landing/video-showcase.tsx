@@ -38,7 +38,7 @@ export function MacWindowVideoPlayer({ className }: { className?: string }) {
                     </div>
                     <div className="flex-1 text-center">
                         <div className="inline-flex items-center px-3 py-0.5 rounded-md bg-white dark:bg-black/50 border border-black/5 text-[10px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 font-sans shadow-sm">
-                            certifgen.com/demo
+                            certiflow.com/demo
                         </div>
                     </div>
                 </div>

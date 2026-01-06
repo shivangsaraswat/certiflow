@@ -39,7 +39,7 @@ const greatVibes = Great_Vibes({ weight: "400", subsets: ["latin"], variable: "-
 const dancingScript = Dancing_Script({ subsets: ["latin"], variable: "--font-dancing-script", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "CertifGen - Certificate Generator",
+  title: "CertiFlow - Certificate Generator",
   description: "Generate professional certificates with ease",
 };
 

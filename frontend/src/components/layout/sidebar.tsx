@@ -88,7 +88,7 @@ export function Sidebar({ forceExpand = false }: { forceExpand?: boolean }) {
                                     transition={{ duration: 0.2 }}
                                     className="truncate text-lg bg-clip-text text-foreground overflow-hidden whitespace-nowrap"
                                 >
-                                    CertifGen
+                                    CertiFlow
                                 </motion.span>
                             )}
                         </AnimatePresence>

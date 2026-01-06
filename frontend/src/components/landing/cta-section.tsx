@@ -18,7 +18,7 @@ export function CTA() {
                             Ready to issue your first certificate?
                         </h2>
                         <p className="text-xl text-zinc-400 max-w-2xl mx-auto">
-                            Join thousands of organizations using CertifGen to recognize authentic achievements.
+                            Join thousands of organizations using CertiFlow to recognize authentic achievements.
                         </p>
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
@@ -27,7 +27,7 @@ export function CTA() {
                                     Get Started for Free <ArrowRight className="ml-2 h-4 w-4" />
                                 </Button>
                             </Link>
-                            <Link href="mailto:sales@certifgen.com">
+                            <Link href="mailto:sales@certiflow.com">
                                 <Button size="lg" variant="outline" className="h-14 px-8 rounded-full text-base border-white/20 bg-transparent text-white hover:bg-white hover:text-black transition-colors">
                                     Contact Sales
                                 </Button>

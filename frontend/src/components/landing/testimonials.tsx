@@ -19,7 +19,7 @@ const testimonials = [
     {
         name: "Elena Rodriguez",
         role: "Program Manager, EduSmart",
-        content: "Security was our #1 concern. CertifGen's blockchain verification gave us the peace of mind we needed.",
+        content: "Security was our #1 concern. CertiFlow's blockchain verification gave us the peace of mind we needed.",
         initial: "ER"
     },
     {
@@ -52,7 +52,7 @@ export function Testimonials() {
                         <span className="text-primary">event organizers.</span>
                     </h2>
                     <p className="text-lg text-muted-foreground">
-                        Join the community of creators who trust CertifGen.
+                        Join the community of creators who trust CertiFlow.
                     </p>
                 </div>
 
