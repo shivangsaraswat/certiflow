@@ -23,9 +23,9 @@ async function main() {
     // Middleware
     // ==========================================================================
 
-    // CORS - Allow frontend requests
+    // CORS - Allow frontend requests (supports multiple origins for production)
     app.use(cors({
-        origin: config.frontendUrl,
+        origin: config.frontendUrls,
         credentials: true,
     }));
 
