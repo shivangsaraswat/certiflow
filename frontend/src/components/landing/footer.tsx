@@ -15,7 +15,7 @@ export function Footer() {
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                                 <Zap className="h-4 w-4" fill="currentColor" />
                             </div>
-                            <span>CertifGen</span>
+                            <span>CertiFlow</span>
                         </div>
                         <p className="text-muted-foreground max-w-xs">
                             The standard for digital credentials. Design, issue, and verify certificates with ease.
@@ -66,7 +66,7 @@ export function Footer() {
                 </div>
 
                 <div className="border-t pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-                    <p>&copy; {new Date().getFullYear()} CertifGen Inc. All rights reserved.</p>
+                    <p>&copy; {new Date().getFullYear()} CertiFlow Inc. All rights reserved.</p>
                     <div className="flex items-center gap-6">
                         <Link href="#" className="hover:text-foreground">Privacy Policy</Link>
                         <Link href="#" className="hover:text-foreground">Terms of Service</Link>

@@ -52,12 +52,12 @@ export default function DashboardPage() {
               <span className="text-sm font-medium text-muted-foreground">Included in your plan</span>
             </div>
             <h1 className="text-3xl font-serif font-medium tracking-tight text-foreground sm:text-4xl">
-              Meet <span className="italic">Automations</span>: CertifGen&apos;s way to put your credentialing on autopilot
+              Meet <span className="italic">Automations</span>: CertiFlow&apos;s way to put your credentialing on autopilot
             </h1>
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li className="flex items-center gap-2.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-sm" />
-                Connect CertifGen to your favorite tools to automate issuance
+                Connect CertiFlow to your favorite tools to automate issuance
               </li>
               <li className="flex items-center gap-2.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-sm" />

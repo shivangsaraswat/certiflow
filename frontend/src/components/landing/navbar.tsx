@@ -105,7 +105,7 @@ export function Navbar() {
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                             <Zap className="h-4 w-4" fill="currentColor" />
                         </div>
-                        <span>CertifGen</span>
+                        <span>CertiFlow</span>
                     </Link>
 
                     {/* Desktop Navigation */}
