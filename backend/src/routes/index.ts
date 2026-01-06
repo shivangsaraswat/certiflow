@@ -13,6 +13,7 @@ import groupRoutes from './groups.js';
 import certificateRoutes from './certificates.js';
 import mailRoutes from './mail.js';
 import sharesRoutes from './shares.js';
+import dashboardRoutes from './dashboard.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.use('/certificates', certificateRoutes);
 router.use('/groups', mailRoutes); // Mail routes are nested under groups
 router.use('/groups/:groupId/shares', sharesRoutes); // Share management under groups
 router.use('/shares', sharesRoutes); // Direct share routes (accept, pending)
+router.use('/dashboard', dashboardRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

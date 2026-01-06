@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, CheckCircle2, Play } from 'lucide-react';
 import Image from 'next/image';
+import { MacWindowVideoPlayer } from '@/components/landing/video-showcase';
 
 export function Hero() {
     // Mouse movement effect for the hero image
@@ -102,73 +103,9 @@ export function Hero() {
                         initial={{ opacity: 0, scale: 0.9, y: 50 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         transition={{ duration: 0.8, delay: 0.2, type: "spring" }}
-                        className="relative rounded-xl bg-card border shadow-2xl overflow-hidden aspect-[16/9] group"
+                        className="relative"
                     >
-                        {/* Placeholder for actual product screenshot using CSS/HTML structure if no image available */}
-                        <div className="absolute inset-0 bg-background flex flex-col">
-                            {/* Fake Browser Top Bar */}
-                            <div className="h-10 border-b bg-muted/30 flex items-center px-4 gap-2">
-                                <div className="flex gap-1.5">
-                                    <div className="w-3 h-3 rounded-full bg-red-400/80" />
-                                    <div className="w-3 h-3 rounded-full bg-yellow-400/80" />
-                                    <div className="w-3 h-3 rounded-full bg-green-400/80" />
-                                </div>
-                                <div className="mx-auto w-[40%] h-6 bg-background rounded-md border flex items-center justify-center text-[10px] text-muted-foreground">
-                                    certifgen.com/editor
-                                </div>
-                            </div>
-
-                            {/* Mock UI Body */}
-                            <div className="flex-1 flex overflow-hidden">
-                                {/* Sidebar */}
-                                <div className="w-64 border-r bg-muted/10 p-4 space-y-4 hidden md:block">
-                                    <div className="h-8 w-32 bg-primary/10 rounded animate-pulse" />
-                                    <div className="space-y-2 pt-4">
-                                        {[1, 2, 3, 4].map(i => (
-                                            <div key={i} className="h-10 w-full bg-muted/50 rounded-lg" />
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Canvas Area */}
-                                <div className="flex-1 bg-muted/5 p-8 flex items-center justify-center relative">
-                                    {/* Certificate mock */}
-                                    <div className="bg-white text-black aspect-[1.414] h-[80%] shadow-xl rounded-sm p-8 relative">
-                                        <div className="absolute top-8 left-8 h-12 w-12 bg-gray-900 rounded-full" />
-                                        <div className="absolute top-8 right-8 h-24 w-24 bg-gray-100" />
-
-                                        <div className="text-center mt-12 space-y-4">
-                                            <div className="h-4 w-32 bg-gray-200 mx-auto rounded" />
-                                            <div className="h-12 w-3/4 bg-gray-900 mx-auto rounded opacity-80" />
-                                            <div className="h-4 w-64 bg-gray-200 mx-auto rounded" />
-                                        </div>
-
-                                        <div className="absolute bottom-12 left-8 right-8 flex justify-between items-end">
-                                            <div className="h-16 w-32 bg-gray-100 rounded" />
-                                            <div className="h-20 w-20 bg-gray-900/10 rounded-full" />
-                                        </div>
-                                    </div>
-
-                                    {/* Floating specific elements */}
-                                    <motion.div
-                                        className="absolute top-1/4 right-10 bg-card p-3 rounded-lg shadow-lg border z-10"
-                                        animate={{ y: [0, -10, 0] }}
-                                        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                                                <CheckCircle2 className="h-5 w-5" />
-                                            </div>
-                                            <div>
-                                                <div className="text-xs font-semibold">Verified</div>
-                                                <div className="text-[10px] text-muted-foreground">Blockchain secured</div>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-
-                                </div>
-                            </div>
-                        </div>
+                        <MacWindowVideoPlayer />
                     </motion.div>
                 </div>
             </div>

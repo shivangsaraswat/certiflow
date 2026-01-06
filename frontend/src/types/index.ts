@@ -283,3 +283,20 @@ export const SYSTEM_ATTRIBUTE_DEFS = {
     },
 };
 
+
+// =============================================================================
+// Dashboard Stats
+// =============================================================================
+
+export interface DashboardStats {
+    certificates: number;
+    templates: number;
+    groups: number;
+    signatures: number;
+    recentActivity?: {
+        id: string;
+        recipientName: string;
+        createdAt: string;
+        generationMode: 'single' | 'bulk';
+    }[];
+}

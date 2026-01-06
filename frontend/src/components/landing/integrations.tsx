@@ -1,61 +1,101 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import Image from 'next/image';
+
+const features = [
+    {
+        title: "Send certificates emails in bulk",
+        description: "Save time and eliminate errors by sending certificates and badges to all recipients in one go. Ensure automatic and reliable delivery.",
+        image: "/banto/bulk-sending-min_ogkb5y.png",
+        bgClass: "bg-[#fedfd4]", // Matches bulk image background
+        imageClass: "object-contain p-6"
+    },
+    {
+        title: "Mass export PDF certificates",
+        description: "Instantly mass-generate and export certificates as PDF documents. No manual work or delays - just seamless downloading.",
+        image: "/banto/pdf-min_sxh2ls.png",
+        bgClass: "bg-[#e5d9f2]", // Matches pdf image background
+        imageClass: "scale-105"
+    },
+    {
+        title: "Generate credential URL lists",
+        description: "Issue digital certificates with unique and shareable URLs. Simplify workflow and give recipients instant access to credentials.",
+        image: "/banto/credential-min_uiii5d.png",
+        bgClass: "bg-[#daf1e7]", // Matches credential image background
+        imageClass: "object-cover"
+    }
+];
+
+const secondaryFeatures = [
+    {
+        title: "Enterprise-grade security",
+        description: "We prioritize security at every level. With ISO 27001 certification, GDPR compliance, AWS cloud hosting, external audits and penetration testing, your data is always protected.",
+        image: "/banto/security-min_d2qivm.webp",
+        bgClass: "bg-[#e8f2ff]", // Matches security image background
+        imageClass: "object-contain"
+    },
+    {
+        title: "Unlimited certificate hosting",
+        description: "All issued digital certificates and badges are stored online forever - at no extra cost. Your recipients have login-free access anytime, instantly.",
+        image: "/banto/hosting-min_qo3zjg.webp",
+        bgClass: "bg-[#fff2e0]", // Matches hosting image background
+        imageClass: "object-contain"
+    }
+];
 
 export function Integrations() {
     return (
-        <section className="py-24 bg-muted/20 border-y">
-            <div className="container mx-auto px-6 text-center">
-                <div className="space-y-4 max-w-2xl mx-auto mb-16">
-                    <h2 className="text-3xl md:text-5xl font-serif font-medium tracking-tight">
-                        Connects with your <br />
-                        <span className="text-primary">favorite tools.</span>
+        <section className="py-24 bg-background">
+            <div className="container mx-auto px-6 max-w-6xl">
+                <div className="mb-16 text-center max-w-3xl mx-auto">
+                    <h2 className="text-3xl md:text-5xl font-serif font-medium tracking-tight mb-4">
+                        Powerful AI certificate generator for any use case
                     </h2>
                     <p className="text-lg text-muted-foreground">
-                        Seamlessly integrate with the apps you use every day.
-                        Trigger certificates from forms, spreadsheets, or your own API.
+                        Generate, issue, send, mass-export, and download certificates in bulk.
                     </p>
                 </div>
 
-                <div className="relative max-w-4xl mx-auto h-[400px] flex items-center justify-center">
-
-                    {/* Central Hub */}
-                    <div className="relative z-10 w-24 h-24 bg-background rounded-2xl shadow-xl flex items-center justify-center border-2 border-primary">
-                        <div className="font-bold text-xl">CG</div>
-                    </div>
-
-                    {/* Orbiting Icons */}
-                    {[
-                        { name: 'Sheets', angle: 0, color: 'bg-green-500' },
-                        { name: 'Zapier', angle: 60, color: 'bg-orange-500' },
-                        { name: 'Slack', angle: 120, color: 'bg-purple-500' },
-                        { name: 'Gmail', angle: 180, color: 'bg-red-500' },
-                        { name: 'Airtable', angle: 240, color: 'bg-yellow-500' },
-                        { name: 'Notion', angle: 300, color: 'bg-black' },
-                    ].map((item, i) => (
-                        <motion.div
-                            key={i}
-                            className="absolute"
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                            style={{ width: '100%', height: '100%' }}
-                        >
-                            <div
-                                className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-card rounded-xl shadow-lg border flex items-center justify-center"
-                                style={{ transform: `rotate(${item.angle}deg) translateY(-150px) rotate(-${item.angle}deg)` }}
-                            >
-                                <div className={`w-8 h-8 rounded-full ${item.color} opacity-80`} />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    {features.map((feature, i) => (
+                        <div key={i} className="rounded-2xl bg-white border border-black/20 hover:border-black/30 overflow-hidden flex flex-col hover:shadow-lg transition-all duration-300">
+                            <div className={`h-56 relative w-full flex items-center justify-center ${feature.bgClass}`}>
+                                <Image
+                                    src={feature.image}
+                                    alt={feature.title}
+                                    fill
+                                    className={`${feature.imageClass || ''}`}
+                                />
                             </div>
-                        </motion.div>
+                            <div className="p-8">
+                                <h3 className="text-xl font-serif font-semibold mb-3">{feature.title}</h3>
+                                <p className="text-muted-foreground leading-relaxed text-sm">
+                                    {feature.description}
+                                </p>
+                            </div>
+                        </div>
                     ))}
+                </div>
 
-                    {/* Connecting Lines (Visuals) */}
-                    <svg className="absolute inset-0 w-full h-full -z-0 opacity-20" viewBox="0 0 896 400">
-                        <circle cx="50%" cy="50%" r="150" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4" />
-                        <circle cx="50%" cy="50%" r="100" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4" />
-                    </svg>
-
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {secondaryFeatures.map((feature, i) => (
+                        <div key={i} className="rounded-2xl bg-white border border-black/20 hover:border-black/30 overflow-hidden hover:shadow-lg transition-all duration-300">
+                            <div className={`relative h-72 w-full flex items-center justify-center ${feature.bgClass}`}>
+                                <Image
+                                    src={feature.image}
+                                    alt={feature.title}
+                                    fill
+                                    className={feature.imageClass}
+                                />
+                            </div>
+                            <div className="p-8">
+                                <h3 className="text-xl font-serif font-semibold mb-3">{feature.title}</h3>
+                                <p className="text-muted-foreground leading-relaxed text-sm">
+                                    {feature.description}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </section>
