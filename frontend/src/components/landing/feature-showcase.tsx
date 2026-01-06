@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Wand2, Database, Send, BarChart, Shield, Layout, Zap, Users } from 'lucide-react';
 import Image from 'next/image';
@@ -46,9 +47,11 @@ export function FeatureShowcase() {
                                 </li>
                             ))}
                         </ul>
-                        <Button size="lg" className="rounded-full">
-                            Open Editor <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
+                        <Link href="/auth/login">
+                            <Button size="lg" className="rounded-full">
+                                Open Editor <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </Link>
                     </motion.div>
 
                     <motion.div
@@ -60,37 +63,14 @@ export function FeatureShowcase() {
                     >
                         <div className="aspect-square md:aspect-[4/3] bg-muted rounded-2xl border shadow-xl overflow-hidden relative group">
                             {/* Abstract Editor UI representation */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-card to-muted p-8 flex flex-col">
-                                <div className="flex items-center justify-between mb-8 border-b pb-4">
-                                    <div className="flex gap-2">
-                                        <div className="h-8 w-8 rounded bg-muted-foreground/20" />
-                                        <div className="h-8 w-8 rounded bg-muted-foreground/20" />
-                                    </div>
-                                    <div className="h-8 w-24 rounded bg-primary/20" />
-                                </div>
-                                <div className="flex-1 bg-white rounded shadow-sm relative flex items-center justify-center border-2 border-dashed border-muted-foreground/20">
-                                    <div className="text-center space-y-2 opacity-50">
-                                        <Layout className="h-12 w-12 mx-auto text-muted-foreground" />
-                                        <p>Drag elements here</p>
-                                    </div>
-
-                                    {/* Floaters */}
-                                    <motion.div
-                                        className="absolute top-1/4 left-1/4 bg-blue-600 text-white text-xs px-2 py-1 rounded shadow-lg"
-                                        animate={{ x: [0, 20, 0], y: [0, -10, 0] }}
-                                        transition={{ duration: 5, repeat: Infinity }}
-                                    >
-                                        Heading
-                                    </motion.div>
-                                    <motion.div
-                                        className="absolute bottom-1/3 right-1/4 bg-green-600 text-white text-xs px-2 py-1 rounded shadow-lg"
-                                        animate={{ x: [0, -15, 0], y: [0, 15, 0] }}
-                                        transition={{ duration: 6, repeat: Infinity, delay: 1 }}
-                                    >
-                                        Date
-                                    </motion.div>
-                                </div>
-                            </div>
+                            <video
+                                src="https://res.cloudinary.com/certifier/video/upload/v1738860141/Certifier_certificates_en_homepage_gjghdp.mp4"
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                className="w-full h-full object-cover"
+                            />
                         </div>
                     </motion.div>
                 </div>

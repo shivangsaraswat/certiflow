@@ -27,8 +27,8 @@ export function CTA() {
                                     Get Started for Free <ArrowRight className="ml-2 h-4 w-4" />
                                 </Button>
                             </Link>
-                            <Link href="#">
-                                <Button size="lg" variant="outline" className="h-14 px-8 rounded-full text-base border-zinc-700 text-white hover:bg-zinc-800 hover:text-white">
+                            <Link href="mailto:sales@certifgen.com">
+                                <Button size="lg" variant="outline" className="h-14 px-8 rounded-full text-base border-white/20 bg-transparent text-white hover:bg-white hover:text-black transition-colors">
                                     Contact Sales
                                 </Button>
                             </Link>
