@@ -76,8 +76,8 @@ export function Sidebar({ forceExpand = false }: { forceExpand?: boolean }) {
                     onMouseLeave={() => setIsHoveringLogo(false)}
                 >
                     <Link href="/dashboard" className="flex items-center gap-3 font-bold tracking-tight outline-none group">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/20 group-hover:scale-105 transition-transform duration-200">
-                            <Zap className="h-5 w-5" fill="currentColor" />
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm shadow-primary/20 group-hover:scale-105 transition-transform duration-200">
+                            <img src="/certiflow-logo1.png" alt="CertiFlow" className="h-9 w-9 object-contain" />
                         </div>
                         <AnimatePresence mode="wait">
                             {!isCollapsed && (

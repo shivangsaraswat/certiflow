@@ -102,8 +102,8 @@ export function Navbar() {
                 <nav className="container mx-auto px-6 h-10 flex items-center justify-between">
                     {/* Logo */}
                     <Link href="/" className="flex items-center gap-2 font-serif font-semibold text-xl z-50">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                            <Zap className="h-4 w-4" fill="currentColor" />
+                        <div className="flex h-8 w-8 items-center justify-center">
+                            <img src="/certiflow-logo1.png" alt="CertiFlow" className="h-8 w-8 object-contain" />
                         </div>
                         <span>CertiFlow</span>
                     </Link>

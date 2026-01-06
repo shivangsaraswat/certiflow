@@ -39,8 +39,51 @@ const greatVibes = Great_Vibes({ weight: "400", subsets: ["latin"], variable: "-
 const dancingScript = Dancing_Script({ subsets: ["latin"], variable: "--font-dancing-script", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "CertiFlow - Certificate Generator",
-  description: "Generate professional certificates with ease",
+  title: "CertiFlow - Design, Issue & Verify Certificates at Lightning Speed",
+  description: "The modern standard for digital credentials. Design beautiful certificates with our drag-and-drop editor, issue thousands in seconds, and verify authenticity instantly. Trusted by educators, event organizers, and enterprises worldwide.",
+  keywords: ["certificate generator", "digital certificates", "credential verification", "bulk certificate generation", "certificate design", "online certificates", "certificate automation"],
+  authors: [{ name: "CertiFlow" }],
+  creator: "CertiFlow",
+  publisher: "CertiFlow",
+  metadataBase: new URL('https://certiflow.shivang.dev'),
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: "CertiFlow - Design, Issue & Verify Certificates at Lightning Speed",
+    description: "The modern standard for digital credentials. Design beautiful certificates with our drag-and-drop editor, issue thousands in seconds, and verify authenticity instantly.",
+    url: 'https://certiflow.shivang.dev',
+    siteName: 'CertiFlow',
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: "CertiFlow - Design, Issue & Verify Certificates at Lightning Speed",
+    description: "The modern standard for digital credentials. Design beautiful certificates with our drag-and-drop editor, issue thousands in seconds.",
+    creator: '@certiflow',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({

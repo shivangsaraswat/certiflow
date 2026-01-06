@@ -12,8 +12,8 @@ export function Footer() {
                     {/* Brand Column */}
                     <div className="col-span-2 lg:col-span-2 space-y-4">
                         <div className="flex items-center gap-2 font-bold text-xl">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                                <Zap className="h-4 w-4" fill="currentColor" />
+                            <div className="flex h-8 w-8 items-center justify-center">
+                                <img src="/certiflow-logo1.png" alt="CertiFlow" className="h-8 w-8 object-contain" />
                             </div>
                             <span>CertiFlow</span>
                         </div>

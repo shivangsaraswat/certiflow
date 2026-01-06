@@ -63,6 +63,21 @@ async function main() {
     // Routes
     // ==========================================================================
 
+    // Root route - API info
+    app.get('/', (req, res) => {
+        res.json({
+            success: true,
+            message: 'CertiFlow API Server',
+            version: '1.0.0',
+            endpoints: {
+                health: '/api/health',
+                templates: '/api/templates',
+                generate: '/api/generate',
+                documentation: 'https://github.com/shivangsaraswat/certif'
+            }
+        });
+    });
+
     // API routes
     app.use('/api', routes);
 
