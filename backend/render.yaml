@@ -4,6 +4,13 @@ services:
     runtime: docker
     plan: free
     region: oregon
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    branch: main
+    buildFilter:
+      paths:
+        - backend/**
     envVars:
       - key: NODE_ENV
         value: production
