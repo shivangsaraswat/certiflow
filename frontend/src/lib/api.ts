@@ -11,6 +11,7 @@ import type {
     Signature,
     CertificateData,
     DynamicAttribute,
+    DashboardStats,
 } from '@/types';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001') + '/api';
@@ -346,6 +347,16 @@ export async function deleteCertificate(id: string, userId?: string): Promise<Ap
 
 export async function getBulkJobStatus(jobId: string, userId?: string): Promise<ApiResponse<BulkGenerationResult>> {
     return fetchApi<BulkGenerationResult>(`/generate/bulk/status/${jobId}`, {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
+}
+
+// =============================================================================
+// Dashboard API
+// =============================================================================
+
+export async function getDashboardStats(userId?: string): Promise<ApiResponse<DashboardStats>> {
+    return fetchApi<DashboardStats>('/dashboard/stats', {
         headers: userId ? { 'x-user-id': userId } : undefined
     });
 }
