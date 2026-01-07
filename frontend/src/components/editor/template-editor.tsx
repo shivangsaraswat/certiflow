@@ -11,7 +11,7 @@
  * - qrCode: Dynamic QR code from URL
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save, Plus, ZoomIn, ZoomOut, Undo, ChevronLeft, ChevronRight, QrCode, Type, Calendar, Lock, Eye } from 'lucide-react';
@@ -26,6 +26,7 @@ import type { Template, DynamicAttribute } from '@/types';
 import { SYSTEM_ATTRIBUTE_IDS, SYSTEM_ATTRIBUTE_DEFS } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { useSession } from 'next-auth/react';
+import { usePageTitle } from '@/components/providers/page-title-provider';
 
 interface TemplateEditorProps {
     template: Template;
@@ -48,12 +49,73 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
     const selectedAttribute = attributes.find((a) => a.id === selectedId) || null;
     const pageAttributes = attributes.filter((a) => a.page === currentPage);
 
+    const { setPageTitle, setActions, setBackButton } = usePageTitle();
+
     // Track changes
     useEffect(() => {
         const originalJson = JSON.stringify(template.attributes);
         const currentJson = JSON.stringify(attributes);
         setHasChanges(originalJson !== currentJson);
     }, [attributes, template.attributes]);
+
+    // Ref to always get the latest handleSave function
+    const handleSaveRef = useRef<() => void>(() => { });
+
+    // Update Global Header
+    useEffect(() => {
+        setPageTitle(template.name);
+
+        setBackButton(
+            <Link href="/templates">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
+            </Link>
+        );
+
+        setActions(
+            <div className="flex items-center gap-2">
+                {hasChanges && (
+                    <Badge variant="secondary" className="hidden sm:inline-flex bg-amber-50 text-amber-600 border-amber-200">
+                        Unsaved changes
+                    </Badge>
+                )}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/templates/${template.id}/preview`)}
+                    className="h-9"
+                >
+                    <Eye className="mr-2 h-4 w-4" />
+                    Preview
+                </Button>
+                <Button
+                    size="sm"
+                    onClick={() => handleSaveRef.current()}
+                    disabled={isSaving || !hasChanges}
+                    className="h-9"
+                >
+                    {isSaving ? (
+                        <>
+                            <LoadingSpinner size="sm" className="mr-2" />
+                            Saving...
+                        </>
+                    ) : (
+                        <>
+                            <Save className="mr-2 h-4 w-4" />
+                            Save Template
+                        </>
+                    )}
+                </Button>
+            </div>
+        );
+
+        return () => {
+            setPageTitle(null);
+            setActions(null);
+            setBackButton(null);
+        };
+    }, [template.name, template.id, hasChanges, isSaving, router, setPageTitle, setActions, setBackButton]);
 
     const handlePdfLoad = useCallback(
         (data: { numPages: number; width: number; height: number }) => {
@@ -176,53 +238,16 @@ export function TemplateEditor({ template, onSave }: TemplateEditorProps) {
         }
     };
 
+    // Keep the ref synced with the latest handleSave
+    handleSaveRef.current = handleSave;
+
     const handleZoomIn = () => setScale((s) => Math.min(2, s + 0.1));
     const handleZoomOut = () => setScale((s) => Math.max(0.3, s - 0.1));
 
     const pdfUrl = getViewUrl('templates', template.filename);
 
     return (
-        <div className="flex h-[calc(100vh-8rem)] flex-col">
-            {/* Header */}
-            <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Link href="/templates">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
-                    <div>
-                        <h1 className="text-xl font-bold">{template.name}</h1>
-
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {hasChanges && (
-                        <Badge variant="secondary">Unsaved changes</Badge>
-                    )}
-                    <Button
-                        variant="outline"
-                        onClick={() => router.push(`/templates/${template.id}/preview`)}
-                    >
-                        <Eye className="mr-2 h-4 w-4" />
-                        Preview
-                    </Button>
-                    <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
-                        {isSaving ? (
-                            <>
-                                <LoadingSpinner size="sm" className="mr-2" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="mr-2 h-4 w-4" />
-                                Save Template
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </div>
-
+        <div className="flex h-[calc(100vh-6rem)] flex-col">
             {/* Error Display */}
             {error && (
                 <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

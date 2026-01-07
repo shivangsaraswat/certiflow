@@ -218,12 +218,13 @@ async function drawText(
             }
         }
 
-        // Y position decreases for each line (PDF coordinate system)
-        const y = attr.y - (i * lineHeight);
+        // PDF y is the baseline position - use it directly
+        // The editor stores y as baseline coordinate
+        const baselineY = attr.y - (i * lineHeight);
 
         page.drawText(line, {
             x,
-            y,
+            y: baselineY,
             size: fontSize,
             font,
             color: rgb(color.r, color.g, color.b),
