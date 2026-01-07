@@ -23,6 +23,9 @@ interface EditorCanvasProps {
     onAttributePositionChange: (id: string, x: number, y: number) => void;
     onAttributeResizeChange?: (id: string, width: number, height: number) => void;
     onDeleteAttribute?: (id: string) => void;
+    onDuplicateAttribute?: (id: string) => void;
+    onLockAttribute?: (id: string) => void;
+    onLayerMove?: (id: string, direction: 'up' | 'down') => void;
     readOnly?: boolean; // If true, attributes strictly for display/preview logic might differ
 }
 
@@ -39,36 +42,41 @@ export function EditorCanvas({
     onAttributePositionChange,
     onAttributeResizeChange,
     onDeleteAttribute,
+    onDuplicateAttribute,
+    onLockAttribute,
+    onLayerMove,
 }: EditorCanvasProps) {
 
     // Filter attributes for the current page
     const pageAttributes = attributes.filter((a) => a.page === currentPage);
 
     return (
-        <div className="flex-1 overflow-auto rounded-lg border bg-muted/30 p-4 relative">
-            <div className="inline-block min-w-full relative">
-                <PDFViewer
-                    url={pdfUrl}
-                    pageNumber={currentPage}
-                    scale={scale}
-                    onLoadSuccess={onPdfLoad}
-                >
-                    {pageAttributes.map((attr) => (
-                        <AttributeOverlay
-                            key={attr.id}
-                            attribute={attr}
-                            isSelected={selectedId === attr.id}
-                            scale={scale}
-                            pdfHeight={pdfDimensions.height}
-                            onSelect={() => onSelectAttribute(attr.id)}
-                            onPositionChange={(x, y) => onAttributePositionChange(attr.id, x, y)}
-                            onResizeChange={onAttributeResizeChange ? (w, h) => onAttributeResizeChange(attr.id, w, h) : undefined}
-                            onDelete={() => onDeleteAttribute && onDeleteAttribute(attr.id)}
-                            previewValue={previewValues[attr.id]}
-                        />
-                    ))}
-                </PDFViewer>
-            </div>
+        <div className="relative isolate">
+            <PDFViewer
+                url={pdfUrl}
+                pageNumber={currentPage}
+                scale={scale}
+                onLoadSuccess={onPdfLoad}
+            >
+                {pageAttributes.map((attr) => (
+                    <AttributeOverlay
+                        key={attr.id}
+                        attribute={attr}
+                        isSelected={selectedId === attr.id}
+                        scale={scale}
+                        pdfHeight={pdfDimensions.height}
+                        onSelect={() => onSelectAttribute(attr.id)}
+                        onPositionChange={(x, y) => onAttributePositionChange(attr.id, x, y)}
+                        onResizeChange={onAttributeResizeChange ? (w, h) => onAttributeResizeChange(attr.id, w, h) : undefined}
+                        onDelete={() => onDeleteAttribute && onDeleteAttribute(attr.id)}
+                        onDuplicate={() => onDuplicateAttribute?.(attr.id)}
+                        onLock={() => onLockAttribute?.(attr.id)}
+                        onLayerUp={() => onLayerMove?.(attr.id, 'up')}
+                        onLayerDown={() => onLayerMove?.(attr.id, 'down')}
+                        previewValue={previewValues[attr.id]}
+                    />
+                ))}
+            </PDFViewer>
         </div>
     );
 }

@@ -19,6 +19,12 @@ export interface Template {
     width: number;                    // Page width in points
     height: number;                   // Page height in points
     attributes: DynamicAttribute[];   // Custom attributes defined by user
+    isPublic: boolean;
+    category?: string | null;
+    style?: string | null;
+    color?: string | null;
+    fileUrl?: string | null;
+    fileId?: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -30,8 +36,9 @@ export interface DynamicAttribute {
     id: string;
     name: string;                     // Display name (e.g., "Recipient Name")
     placeholder: string;              // Placeholder shown in editor (e.g., "{Name}")
-    type: 'text' | 'date' | 'signature' | 'qr';
+    type: 'text' | 'date' | 'signature' | 'qr' | 'image' | 'shape';
     required: boolean;
+    defaultValue?: string;
 
     // Position in PDF coordinates
     page: number;
@@ -49,6 +56,10 @@ export interface DynamicAttribute {
     // For signature type
     width?: number;
     height?: number;
+
+    // Layer properties
+    locked?: boolean;
+    hidden?: boolean;
 
     // System attribute flag - cannot be renamed or deleted
     isSystem?: boolean;
@@ -299,4 +310,19 @@ export interface DashboardStats {
         createdAt: string;
         generationMode: 'single' | 'bulk';
     }[];
+}
+
+// =============================================================================
+// Asset Types
+// =============================================================================
+
+export interface UserAsset {
+    id: string;
+    filename: string;
+    fileUrl: string;
+    fileId?: string;
+    width: number;
+    height: number;
+    createdAt: string;
+    userId: string;
 }

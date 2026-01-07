@@ -13,6 +13,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { revalidatePath } from "next/cache"
 import { Label } from "@/components/ui/label"
 import { AddUserForm } from "./add-user-form"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { templates as templatesTable } from "@/db/schema"
+import { TemplatesTable } from "./templates-table"
 
 export default async function AdminPage() {
     const session = await auth();
@@ -28,6 +31,14 @@ export default async function AdminPage() {
     // Fetch System Settings
     const settings = await db.query.systemSettings.findFirst({
         where: eq(systemSettings.id, "global"),
+    });
+
+    // Fetch All Templates (for management)
+    const allTemplates = await db.query.templates.findMany({
+        orderBy: [desc(templatesTable.createdAt)],
+        with: {
+            user: true
+        }
     });
 
     // Actions
@@ -59,86 +70,107 @@ export default async function AdminPage() {
         <div className="space-y-6">
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
 
-            {/* System Settings */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>System Settings</CardTitle>
-                    <CardDescription>Global configuration for the application.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-0.5">
-                            <Label className="text-base">Allow New Signups</Label>
-                            <div className="text-sm text-muted-foreground">
-                                {settings?.allowSignups ? "New users can sign up and login." : "New signups are disabled."}
-                            </div>
-                        </div>
-                        <form action={toggleSignup}>
-                            <Button variant={settings?.allowSignups ? "destructive" : "default"} type="submit">
-                                {settings?.allowSignups ? "Disable Signups" : "Enable Signups"}
-                            </Button>
-                        </form>
-                    </div>
-                </CardContent>
-            </Card>
+            <Tabs defaultValue="users" className="space-y-4">
+                <TabsList>
+                    <TabsTrigger value="users">Users & Access</TabsTrigger>
+                    <TabsTrigger value="templates">Templates Management</TabsTrigger>
+                </TabsList>
 
-            {/* User Management */}
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <div className="space-y-1">
-                        <CardTitle>User Management</CardTitle>
-                        <CardDescription>Manage user access and roles.</CardDescription>
-                    </div>
-                    <AddUserForm />
-                </CardHeader>
-                <CardContent className="mt-4">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>User</TableHead>
-                                <TableHead>Role</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {allUsers.map((user) => (
-                                <TableRow key={user.id}>
-                                    <TableCell className="flex items-center gap-3">
-                                        <Avatar className="h-8 w-8">
-                                            <AvatarImage src={user.image || ""} />
-                                            <AvatarFallback>{user.name?.charAt(0) || "U"}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex flex-col">
-                                            <span className="font-medium">{user.name}</span>
-                                            <span className="text-xs text-muted-foreground">{user.email}</span>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline">{user.role}</Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        {user.isAllowed ? (
-                                            <Badge className="bg-green-500 hover:bg-green-600">Active</Badge>
-                                        ) : (
-                                            <Badge variant="destructive">Blocked</Badge>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {user.role !== 'admin' && (
-                                            <form action={toggleUserAccess.bind(null, user.id, user.isAllowed || false)}>
-                                                <Button size="sm" variant="ghost">
-                                                    {user.isAllowed ? "Revoke Access" : "Approve Access"}
-                                                </Button>
-                                            </form>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+                <TabsContent value="users" className="space-y-4">
+                    {/* System Settings */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>System Settings</CardTitle>
+                            <CardDescription>Global configuration for the application.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center justify-between p-4 border rounded-lg">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">Allow New Signups</Label>
+                                    <div className="text-sm text-muted-foreground">
+                                        {settings?.allowSignups ? "New users can sign up and login." : "New signups are disabled."}
+                                    </div>
+                                </div>
+                                <form action={toggleSignup}>
+                                    <Button variant={settings?.allowSignups ? "destructive" : "default"} type="submit">
+                                        {settings?.allowSignups ? "Disable Signups" : "Enable Signups"}
+                                    </Button>
+                                </form>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* User Management */}
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <div className="space-y-1">
+                                <CardTitle>User Management</CardTitle>
+                                <CardDescription>Manage user access and roles.</CardDescription>
+                            </div>
+                            <AddUserForm />
+                        </CardHeader>
+                        <CardContent className="mt-4">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>User</TableHead>
+                                        <TableHead>Role</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {allUsers.map((user) => (
+                                        <TableRow key={user.id}>
+                                            <TableCell className="flex items-center gap-3">
+                                                <Avatar className="h-8 w-8">
+                                                    <AvatarImage src={user.image || ""} />
+                                                    <AvatarFallback>{user.name?.charAt(0) || "U"}</AvatarFallback>
+                                                </Avatar>
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium">{user.name}</span>
+                                                    <span className="text-xs text-muted-foreground">{user.email}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline">{user.role}</Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {user.isAllowed ? (
+                                                    <Badge className="bg-green-500 hover:bg-green-600">Active</Badge>
+                                                ) : (
+                                                    <Badge variant="destructive">Blocked</Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {user.role !== 'admin' && (
+                                                    <form action={toggleUserAccess.bind(null, user.id, user.isAllowed || false)}>
+                                                        <Button size="sm" variant="ghost">
+                                                            {user.isAllowed ? "Revoke Access" : "Approve Access"}
+                                                        </Button>
+                                                    </form>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="templates" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>All Templates</CardTitle>
+                            <CardDescription>Manage public visibility and metadata for all templates.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <TemplatesTable templates={allTemplates} />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
         </div>
     )
 }

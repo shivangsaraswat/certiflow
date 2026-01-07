@@ -1,5 +1,6 @@
 
-import { pgTable, text, timestamp, integer, boolean, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, primaryKey, doublePrecision, jsonb } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 import type { AdapterAccount } from '@auth/core/adapters';
 
 export const users = pgTable("user", {
@@ -64,3 +65,58 @@ export const systemSettings = pgTable("system_settings", {
     allowSignups: boolean("allow_signups").default(false).notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// =============================================================================
+// Templates
+// =============================================================================
+export const templates = pgTable('templates', {
+    id: text('id').primaryKey(),
+    code: text('code').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description'),
+    filename: text('filename').notNull(),
+    filepath: text('filepath').notNull(),
+    fileUrl: text('file_url'),
+    fileId: text('file_id'),
+    pageCount: integer('page_count').notNull(),
+    width: doublePrecision('width').notNull(),
+    height: doublePrecision('height').notNull(),
+    attributes: jsonb('attributes').notNull(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    isPublic: boolean('is_public').default(false).notNull(),
+    category: text('category'),
+    style: text('style'),
+    color: text('color'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const templatesRelations = relations(templates, ({ one }) => ({
+    user: one(users, {
+        fields: [templates.userId],
+        references: [users.id],
+    }),
+}));
+
+export const usersRelations = relations(users, ({ many }) => ({
+    templates: many(templates),
+    assets: many(userAssets),
+}));
+
+export const userAssets = pgTable('user_assets', {
+    id: text('id').primaryKey(),
+    filename: text('filename').notNull(),
+    fileUrl: text('file_url').notNull(),
+    fileId: text('file_id'),
+    width: integer('width'),
+    height: integer('height'),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const userAssetsRelations = relations(userAssets, ({ one }) => ({
+    user: one(users, {
+        fields: [userAssets.userId],
+        references: [users.id],
+    }),
+}));

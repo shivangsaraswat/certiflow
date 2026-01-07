@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { PanelLeftOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 interface DashboardShellProps {
     children: React.ReactNode;
@@ -16,6 +17,8 @@ interface DashboardShellProps {
 export function DashboardShell({ children }: DashboardShellProps) {
     const { isCollapsed, toggleSidebar, isMounted } = useSidebar();
     const [isHoveringGutter, setIsHoveringGutter] = useState(false);
+    const pathname = usePathname();
+    const isEditorPage = pathname?.startsWith('/templates/') && pathname.split('/').length > 2;
 
     // Prevent hydration mismatch by rendering a static layout until mounted
     if (!isMounted) {
@@ -53,7 +56,12 @@ export function DashboardShell({ children }: DashboardShellProps) {
                 className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden"
             >
                 <Header />
-                <main className="px-4 sm:px-6 pb-6 pt-4 flex-1 overflow-hidden">
+                <main
+                    className={cn(
+                        "flex-1 overflow-hidden",
+                        isEditorPage ? "p-0" : "px-4 sm:px-6 pb-6 pt-4"
+                    )}
+                >
                     {children}
                 </main>
             </motion.div>

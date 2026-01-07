@@ -13,15 +13,53 @@ import { storage } from './storage.service.js';
 /**
  * Get all templates
  */
+export interface TemplateFilters {
+    category?: string;
+    style?: string;
+    color?: string;
+    search?: string;
+    publicOnly?: boolean;
+}
+
 /**
  * Get all templates
  * Returns templates owned by userId OR public templates
+ * Applies optional filters
  */
-export async function getAllTemplates(userId: string): Promise<Template[]> {
+export async function getAllTemplates(userId: string, filters: TemplateFilters = {}): Promise<Template[]> {
+    const conditions = [];
+
+    // Base access control: My templates OR Public templates
+    // If publicOnly is strictly true, we only show public
+    if (filters.publicOnly) {
+        conditions.push(eq(templates.isPublic, true));
+    } else {
+        // Default: Mine OR Public
+        conditions.push(sql`(${templates.userId} = ${userId} OR ${templates.isPublic} = true)`);
+    }
+
+    // Apply filters
+    if (filters.category) {
+        conditions.push(eq(templates.category, filters.category));
+    }
+    if (filters.style) {
+        conditions.push(eq(templates.style, filters.style));
+    }
+    if (filters.color) {
+        conditions.push(eq(templates.color, filters.color));
+    }
+    if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        conditions.push(sql`(lower(${templates.name}) LIKE ${`%${searchLower}%`} OR lower(${templates.description}) LIKE ${`%${searchLower}%`})`);
+    }
+
     const allTemplates = await db.select().from(templates)
         .where(
-            sql`${templates.userId} = ${userId} OR ${templates.isPublic} = true`
+            conditions.length > 1
+                ? sql.join(conditions, sql` AND `)
+                : conditions[0]
         );
+
     return allTemplates.map(toTemplate);
 }
 
@@ -71,7 +109,15 @@ export async function deleteTemplate(id: string, userId: string): Promise<boolea
 export const createTemplate = async (
     file: Express.Multer.File,
     userId: string,
-    data?: { name?: string, description?: string, code?: string }
+    data?: {
+        name?: string,
+        description?: string,
+        code?: string,
+        category?: string,
+        style?: string,
+        color?: string,
+        isPublic?: boolean
+    }
 ): Promise<Template> => {
     // Validate code
     if (!data?.code) {
@@ -125,7 +171,10 @@ export const createTemplate = async (
         createdAt: new Date(),
         updatedAt: new Date(),
         userId: userId, // Set owner
-        isPublic: false,
+        isPublic: data?.isPublic ?? false,
+        category: data?.category || null,
+        style: data?.style || null,
+        color: data?.color || null,
     };
 
     await db.insert(templates).values(newTemplate);
@@ -133,11 +182,38 @@ export const createTemplate = async (
     return toTemplate(newTemplate);
 };
 
-export const updateTemplate = async (id: string, userId: string, updates: Partial<Template>): Promise<Template | null> => {
-    // Only allow updating name, description
+export const updateTemplate = async (id: string, userId: string, updates: Partial<Template>, sourceTemplateId?: string): Promise<Template | null> => {
     const updateData: any = {};
-    if (updates.name) updateData.name = updates.name;
-    if (updates.description) updateData.description = updates.description;
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.isPublic !== undefined) updateData.isPublic = updates.isPublic;
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.style !== undefined) updateData.style = updates.style;
+    if (updates.color !== undefined) updateData.color = updates.color;
+
+    // If sourceTemplateId is provided, copy file metadata from that template
+    if (sourceTemplateId) {
+        const sourceTemplate = await getTemplateById(sourceTemplateId);
+        // Ensure source exists and is accessible (Public or Owned by user)
+        if (sourceTemplate && (sourceTemplate.isPublic || sourceTemplate.userId === userId)) {
+            updateData.filename = sourceTemplate.filename;
+            updateData.filepath = sourceTemplate.filepath;
+            updateData.fileUrl = sourceTemplate.fileUrl;
+            updateData.fileId = sourceTemplate.fileId;
+            updateData.pageCount = sourceTemplate.pageCount;
+            updateData.width = sourceTemplate.width;
+            updateData.height = sourceTemplate.height;
+            // Also copy attributes logic? Usually yes, if we swap background we often want the layout too.
+            // But we should probably allow 'updates.attributes' to override if passed, or just copy source.
+            // Let's copy source attributes unless explicitly provided in 'updates'
+            // However, typical flow is: Select Template -> Frontend gets attributes -> Frontend calls save with attributes.
+            // But if we want to save the "Background Swap", we need this.
+            // Let's assume frontend passes attributes if it wants to customization, but if not, we take source.
+            if (!updates.attributes) {
+                updateData.attributes = sourceTemplate.attributes;
+            }
+        }
+    }
 
     updateData.updatedAt = new Date();
 

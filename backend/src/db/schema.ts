@@ -21,6 +21,9 @@ export const templates = pgTable('templates', {
     attributes: jsonb('attributes').notNull(), // DynamicAttribute[]
     userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     isPublic: boolean('is_public').default(false).notNull(),
+    category: text('category'), // e.g., "Certificate", "Diploma"
+    style: text('style'), // e.g., "Modern", "Classic"
+    color: text('color'), // e.g., "Blue", "#0000FF"
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -356,6 +359,20 @@ export const signatures = pgTable('signatures', {
     filename: text('filename').notNull(),
     fileUrl: text('file_url').notNull(),
     fileId: text('file_id'), // ImageKit ID
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// =============================================================================
+// User Assets (Images)
+// =============================================================================
+export const userAssets = pgTable('user_assets', {
+    id: text('id').primaryKey(),
+    filename: text('filename').notNull(),
+    fileUrl: text('file_url').notNull(),
+    fileId: text('file_id'), // ImageKit ID
+    width: integer('width'),
+    height: integer('height'),
     userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });

@@ -12,6 +12,7 @@ import type {
     CertificateData,
     DynamicAttribute,
     DashboardStats,
+    UserAsset,
 } from '@/types';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001') + '/api';
@@ -48,8 +49,26 @@ async function fetchApi<T>(
 // Template API
 // =============================================================================
 
-export async function getTemplates(userId?: string): Promise<ApiResponse<Template[]>> {
-    return fetchApi<Template[]>('/templates', {
+export interface GetTemplatesParams {
+    category?: string;
+    style?: string;
+    color?: string;
+    search?: string;
+    public?: boolean;
+}
+
+export async function getTemplates(userId?: string, params?: GetTemplatesParams): Promise<ApiResponse<Template[]>> {
+    const query = new URLSearchParams();
+    if (params?.category) query.append('category', params.category);
+    if (params?.style) query.append('style', params.style);
+    if (params?.color) query.append('color', params.color);
+    if (params?.search) query.append('search', params.search);
+    if (params?.public) query.append('public', 'true');
+
+    const queryString = query.toString();
+    const endpoint = `/templates${queryString ? `?${queryString}` : ''}`;
+
+    return fetchApi<Template[]>(endpoint, {
         headers: userId ? { 'x-user-id': userId } : undefined
     });
 }
@@ -70,7 +89,7 @@ export async function createTemplate(formData: FormData, userId?: string): Promi
 
 export async function updateTemplate(
     id: string,
-    data: { name?: string; description?: string },
+    data: { name?: string; description?: string; sourceTemplateId?: string },
     userId?: string
 ): Promise<ApiResponse<Template>> {
     return fetchApi<Template>(`/templates/${id}`, {
@@ -357,6 +376,31 @@ export async function getBulkJobStatus(jobId: string, userId?: string): Promise<
 
 export async function getDashboardStats(userId?: string): Promise<ApiResponse<DashboardStats>> {
     return fetchApi<DashboardStats>('/dashboard/stats', {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
+}
+
+// =============================================================================
+// Assets API
+// =============================================================================
+
+export async function getUserAssets(userId?: string): Promise<ApiResponse<UserAsset[]>> {
+    return fetchApi<UserAsset[]>('/assets', {
+        headers: userId ? { 'x-user-id': userId } : undefined
+    });
+}
+
+export async function uploadAsset(formData: FormData, userId?: string): Promise<ApiResponse<UserAsset>> {
+    return fetchApi<UserAsset>('/assets', {
+        method: 'POST',
+        headers: userId ? { 'x-user-id': userId } : undefined,
+        body: formData,
+    });
+}
+
+export async function deleteAsset(id: string, userId?: string): Promise<ApiResponse<{ message: string }>> {
+    return fetchApi<{ message: string }>(`/assets/${id}`, {
+        method: 'DELETE',
         headers: userId ? { 'x-user-id': userId } : undefined
     });
 }

@@ -179,6 +179,7 @@ export class ImageKitStorageProvider implements StorageProvider {
             case 'generated': return '/generated';
             case 'signatures': return '/signatures';
             case 'bulk-zips': return '/bulk-zips';
+            case 'assets': return '/assets';
             default: return '/misc';
         }
     }

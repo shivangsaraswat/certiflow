@@ -60,6 +60,9 @@ export interface Template {
     // Multi-tenancy
     userId?: string | null;
     isPublic?: boolean;
+    category?: string | null;
+    style?: string | null;
+    color?: string | null;
 
     createdAt: Date;
     updatedAt: Date;
@@ -72,7 +75,7 @@ export interface ApiResponse<T = any> {
     message?: string;
 }
 
-export type StorageType = 'templates' | 'generated' | 'signatures' | 'bulk-zips';
+export type StorageType = 'templates' | 'generated' | 'signatures' | 'bulk-zips' | 'assets';
 
 export interface Signature {
     id: string;

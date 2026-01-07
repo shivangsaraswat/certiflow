@@ -69,8 +69,8 @@ export function Sidebar({ forceExpand = false }: { forceExpand?: boolean }) {
                 {/* Logo & Toggle - Fixed at top */}
                 <div
                     className={cn(
-                        "relative flex h-16 items-center px-4 shrink-0 group/header",
-                        isCollapsed ? "justify-center" : "justify-between"
+                        "relative flex h-16 items-center shrink-0 group/header",
+                        isCollapsed ? "justify-center px-0" : "justify-between px-4"
                     )}
                     onMouseEnter={() => setIsHoveringLogo(true)}
                     onMouseLeave={() => setIsHoveringLogo(false)}
@@ -157,7 +157,7 @@ export function Sidebar({ forceExpand = false }: { forceExpand?: boolean }) {
                                 href={item.href}
                                 className={cn(
                                     'group relative flex items-center gap-3 rounded-lg py-2.5 transition-all duration-200 overflow-hidden',
-                                    isCollapsed ? 'justify-center w-10 h-10 mx-auto px-0' : 'px-3',
+                                    isCollapsed ? 'justify-center w-9 h-9 mx-auto px-0 rounded-lg' : 'px-3',
                                     isActive
                                         ? 'bg-primary/10 text-primary shadow-[0_0_0_1px_rgba(var(--primary),0.1)]'
                                         : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground'
@@ -215,13 +215,13 @@ export function Sidebar({ forceExpand = false }: { forceExpand?: boolean }) {
                             <button className={cn(
                                 "flex w-full items-center gap-3 rounded-xl transition-all duration-300 outline-none",
                                 isCollapsed
-                                    ? "h-10 w-10 justify-center mx-auto hover:bg-sidebar-accent"
+                                    ? "h-9 w-9 justify-center mx-auto hover:bg-sidebar-accent"
                                     : "px-2.5 py-2.5 hover:bg-sidebar-accent border border-transparent hover:border-sidebar-border shadow-sm hover:shadow-md"
                             )}>
                                 <div className="relative shrink-0">
                                     <Avatar className={cn(
                                         "transition-all duration-300 ring-2 ring-transparent group-hover:ring-primary/20",
-                                        isCollapsed ? "h-8 w-8" : "h-9 w-9 shadow-sm"
+                                        isCollapsed ? "h-7 w-7" : "h-9 w-9 shadow-sm"
                                     )}>
                                         <AvatarImage src={user?.image || ""} />
                                         <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">

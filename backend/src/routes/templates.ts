@@ -10,7 +10,8 @@ import {
     updateAllAttributes,
     addAttribute,
     updateAttribute,
-    deleteAttribute
+    deleteAttribute,
+    TemplateFilters
 } from '../services/template.service.js';
 import { uploadConfig } from '../middleware/upload.js';
 import { ApiResponse, DynamicAttribute } from '../types/index.js';
@@ -27,7 +28,15 @@ router.get('/', async (req, res) => {
         if (!userId) {
             return res.status(401).json({ success: false, error: 'Unauthorized' });
         }
-        const templates = await getAllTemplates(userId);
+        const filters: TemplateFilters = {
+            category: req.query.category as string,
+            style: req.query.style as string,
+            color: req.query.color as string,
+            search: req.query.search as string,
+            publicOnly: req.query.public === 'true'
+        };
+
+        const templates = await getAllTemplates(userId, filters);
         const response: ApiResponse = {
             success: true,
             data: templates
@@ -58,7 +67,11 @@ router.post('/', upload.single('template'), async (req, res) => {
         const template = await createTemplate(req.file, userId, {
             name: req.body.name,
             description: req.body.description,
-            code: req.body.code
+            code: req.body.code,
+            category: req.body.category,
+            style: req.body.style,
+            color: req.body.color,
+            isPublic: req.body.isPublic === 'true' || req.body.isPublic === true
         });
 
         const response: ApiResponse = {
@@ -79,8 +92,8 @@ router.patch('/:id', async (req, res) => {
         if (!userId) {
             return res.status(401).json({ success: false, error: 'Unauthorized' });
         }
-        const { name, description } = req.body;
-        const template = await updateTemplate(req.params.id, userId, { name, description });
+        const { name, description, sourceTemplateId } = req.body;
+        const template = await updateTemplate(req.params.id, userId, { name, description }, sourceTemplateId);
 
         if (!template) {
             return res.status(404).json({ success: false, error: 'Template not found or unauthorized' });
