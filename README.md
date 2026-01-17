@@ -1,4 +1,5 @@
-# Certificate Generation Web Application
+# certiflow
+Certificate Generation Web Application
 
 A production-ready MVP for generating professional certificates using **PDF templates** with dynamic data overlay.
 
