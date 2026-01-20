@@ -291,6 +291,15 @@ export function Sidebar({ forceExpand = false }: { forceExpand?: boolean }) {
                                 </DropdownMenuItem>
                             )}
 
+                            <DropdownMenuItem asChild>
+                                <Link href="/settings" className="cursor-pointer gap-2.5 rounded-lg py-2">
+                                    <div className="h-8 w-8 flex items-center justify-center rounded-md bg-muted/50 text-foreground">
+                                        <Settings className="h-4 w-4" />
+                                    </div>
+                                    <span className="font-medium">Settings</span>
+                                </Link>
+                            </DropdownMenuItem>
+
                             <DropdownMenuSeparator className="my-1.5 opacity-50" />
 
                             <DropdownMenuItem

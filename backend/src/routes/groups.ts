@@ -481,11 +481,12 @@ router.put('/:id/settings/email-template', async (req, res) => {
 /**
  * PUT /api/groups/:id/settings/smtp - Save SMTP configuration
  * Accessible to both owner and shared users
+ * Supports: useGlobalConfig=true with globalSmtpConfigId OR group-specific SMTP fields
  */
 router.put('/:id/settings/smtp', async (req, res) => {
     try {
         const { id } = req.params;
-        const { smtpHost, smtpPort, smtpEmail, smtpPassword, encryptionType, senderName, replyTo } = req.body;
+        const { useGlobalConfig, globalSmtpConfigId, smtpHost, smtpPort, smtpEmail, smtpPassword, encryptionType, senderName, replyTo } = req.body;
 
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -496,6 +497,37 @@ router.put('/:id/settings/smtp', async (req, res) => {
         if (!access.hasAccess) {
             return res.status(404).json({ success: false, error: 'Group not found' });
         }
+
+        // Handle global config selection
+        if (useGlobalConfig && globalSmtpConfigId) {
+            // Verify the global config exists and belongs to the user
+            const { globalSmtpConfig: globalSmtpTable } = await import('../db/schema.js');
+            const globalConfig = await db
+                .select({ id: globalSmtpTable.id })
+                .from(globalSmtpTable)
+                .where(eq(globalSmtpTable.id, globalSmtpConfigId));
+
+            if (!globalConfig[0]) {
+                return res.status(400).json({ success: false, error: 'Global SMTP configuration not found' });
+            }
+
+            // Set globalSmtpConfigId on group
+            await db
+                .update(groups)
+                .set({ globalSmtpConfigId, updatedAt: new Date() })
+                .where(eq(groups.id, id));
+
+            // Optionally clear group-specific SMTP config to avoid confusion
+            await db.delete(groupSmtpConfig).where(eq(groupSmtpConfig.groupId, id));
+
+            return res.json({ success: true, data: { id, useGlobalConfig: true, globalSmtpConfigId, updated: true } });
+        }
+
+        // Clear global config reference when using group-specific config
+        await db
+            .update(groups)
+            .set({ globalSmtpConfigId: null, updatedAt: new Date() })
+            .where(eq(groups.id, id));
 
         // Import encryption service
         const { encrypt } = await import('../services/encryption.service.js');
@@ -548,6 +580,7 @@ router.put('/:id/settings/smtp', async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to save SMTP configuration' });
     }
 });
+
 
 /**
  * POST /api/groups/:id/settings/smtp/test - Test SMTP connection

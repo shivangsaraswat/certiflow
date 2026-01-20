@@ -46,6 +46,8 @@ export const groups = pgTable('groups', {
     // Email configuration
     emailTemplateHtml: text('email_template_html'),
     emailSubject: text('email_subject'),
+    // Global SMTP reference (optional - if set, uses global config instead of group-specific)
+    globalSmtpConfigId: text('global_smtp_config_id'),
     userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -122,6 +124,32 @@ export const groupSmtpConfigRelations = relations(groupSmtpConfig, ({ one }) => 
     group: one(groups, {
         fields: [groupSmtpConfig.groupId],
         references: [groups.id],
+    }),
+}));
+
+// =============================================================================
+// Global SMTP Configuration - Account-level reusable SMTP configs
+// =============================================================================
+export const globalSmtpConfig = pgTable('global_smtp_config', {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(), // User-friendly name for the config
+    smtpHost: text('smtp_host').notNull(),
+    smtpPort: integer('smtp_port').notNull(),
+    smtpEmail: text('smtp_email').notNull(),
+    smtpPassword: text('smtp_password').notNull(), // Encrypted
+    encryptionType: text('encryption_type').notNull(), // 'tls' | 'ssl' | 'none'
+    senderName: text('sender_name'),
+    replyTo: text('reply_to'),
+    isDefault: boolean('is_default').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const globalSmtpConfigRelations = relations(globalSmtpConfig, ({ one }) => ({
+    user: one(users, {
+        fields: [globalSmtpConfig.userId],
+        references: [users.id],
     }),
 }));
 

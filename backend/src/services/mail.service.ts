@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { db } from '../lib/db.js';
-import { groupSmtpConfig, groups, mailJobs, mailLogs, certificates } from '../db/schema.js';
+import { groupSmtpConfig, groups, mailJobs, mailLogs, certificates, globalSmtpConfig } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 import { decrypt } from './encryption.service.js';
 
@@ -58,6 +58,33 @@ export class MailService {
     }
 
     async getGroupSmtpConfig(groupId: string): Promise<SmtpConfig | null> {
+        // First, check if the group uses a global SMTP config
+        const groupData = await db
+            .select({ globalSmtpConfigId: groups.globalSmtpConfigId })
+            .from(groups)
+            .where(eq(groups.id, groupId));
+
+        if (groupData[0]?.globalSmtpConfigId) {
+            // Use global config
+            const globalConfig = await db
+                .select()
+                .from(globalSmtpConfig)
+                .where(eq(globalSmtpConfig.id, groupData[0].globalSmtpConfigId));
+
+            if (globalConfig[0]) {
+                return {
+                    smtpHost: globalConfig[0].smtpHost,
+                    smtpPort: globalConfig[0].smtpPort,
+                    smtpEmail: globalConfig[0].smtpEmail,
+                    smtpPassword: decrypt(globalConfig[0].smtpPassword),
+                    encryptionType: globalConfig[0].encryptionType,
+                    senderName: globalConfig[0].senderName || undefined,
+                    replyTo: globalConfig[0].replyTo || undefined,
+                };
+            }
+        }
+
+        // Fall back to group-specific config (existing behavior)
         const config = await db
             .select()
             .from(groupSmtpConfig)

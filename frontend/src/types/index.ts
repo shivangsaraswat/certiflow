@@ -123,6 +123,8 @@ export interface Group {
     // Email configuration
     emailTemplateHtml?: string | null;
     emailSubject?: string | null;
+    // Global SMTP reference (if set, uses this instead of group-specific SMTP)
+    globalSmtpConfigId?: string | null;
     // Relations
     sheet?: {
         id: string;

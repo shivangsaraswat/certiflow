@@ -113,6 +113,11 @@ export default function GroupSettingsPage() {
     const [isTestingSmtp, setIsTestingSmtp] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
+    // Global SMTP config state
+    const [globalSmtpConfigs, setGlobalSmtpConfigs] = useState<{ id: string; name: string; smtpEmail: string }[]>([]);
+    const [useGlobalConfig, setUseGlobalConfig] = useState(false);
+    const [selectedGlobalConfigId, setSelectedGlobalConfigId] = useState<string>('');
+
     // Email Template state
     const [emailSubject, setEmailSubject] = useState('');
     const [emailTemplateHtml, setEmailTemplateHtml] = useState('');
@@ -162,13 +167,21 @@ export default function GroupSettingsPage() {
         setLoading(true);
 
         try {
-            const [groupRes, templatesRes, sheetsRes] = await Promise.all([
+            const [groupRes, templatesRes, sheetsRes, globalSmtpRes] = await Promise.all([
                 getGroup(groupId, userId),
                 getTemplates(userId),
                 fetch(`${baseUrl}/api/spreadsheets`, {
                     headers: { 'x-user-id': userId }
                 }).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+                fetch(`${baseUrl}/api/settings/smtp`, {
+                    headers: { 'x-user-id': userId }
+                }).then(r => r.json()).catch(() => ({ success: false, data: [] })),
             ]);
+
+            // Load global SMTP configs for dropdown
+            if (globalSmtpRes.success && globalSmtpRes.data) {
+                setGlobalSmtpConfigs(globalSmtpRes.data);
+            }
 
             if (groupRes.success && groupRes.data) {
                 const gData = groupRes.data;
@@ -181,7 +194,12 @@ export default function GroupSettingsPage() {
                 setEmailSubject(gData.emailSubject || '');
                 setEmailTemplateHtml(gData.emailTemplateHtml || getDefaultEmailTemplate());
 
-                if (gData.smtpConfig) {
+                // Check if group uses global SMTP config
+                if (gData.globalSmtpConfigId) {
+                    setUseGlobalConfig(true);
+                    setSelectedGlobalConfigId(gData.globalSmtpConfigId);
+                } else if (gData.smtpConfig) {
+                    setUseGlobalConfig(false);
                     setSmtpConfig({
                         smtpHost: gData.smtpConfig.smtpHost || '',
                         smtpPort: gData.smtpConfig.smtpPort?.toString() || '587',
@@ -365,13 +383,12 @@ export default function GroupSettingsPage() {
     const handleSaveSmtpConfig = async () => {
         setIsSavingSmtp(true);
         try {
-            const res = await fetch(`${baseUrl}/api/groups/${groupId}/settings/smtp`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-id': userId || '',
-                },
-                body: JSON.stringify({
+            const body = useGlobalConfig
+                ? {
+                    useGlobalConfig: true,
+                    globalSmtpConfigId: selectedGlobalConfigId,
+                }
+                : {
                     smtpHost: smtpConfig.smtpHost,
                     smtpPort: parseInt(smtpConfig.smtpPort),
                     smtpEmail: smtpConfig.smtpEmail,
@@ -379,7 +396,15 @@ export default function GroupSettingsPage() {
                     encryptionType: smtpConfig.encryptionType,
                     senderName: smtpConfig.senderName,
                     replyTo: smtpConfig.replyTo,
-                }),
+                };
+
+            const res = await fetch(`${baseUrl}/api/groups/${groupId}/settings/smtp`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': userId || '',
+                },
+                body: JSON.stringify(body),
             });
             const data = await res.json();
             if (data.success) {
@@ -725,96 +750,160 @@ export default function GroupSettingsPage() {
                     {/* SMTP SECTION */}
                     {activeSection === 'smtp' && (
                         <div className="space-y-6">
+                            {/* Mode Selection */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>SMTP Settings</CardTitle>
-                                    <CardDescription>Configure your custom email sending server.</CardDescription>
+                                    <CardTitle>SMTP Configuration Mode</CardTitle>
+                                    <CardDescription>Choose how to configure email sending for this group.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <Label>SMTP Host</Label>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-auto p-0 text-xs text-primary hover:bg-transparent"
-                                                    onClick={() => setSmtpConfig(p => ({
-                                                        ...p,
-                                                        smtpHost: 'smtp.gmail.com',
-                                                        smtpPort: '587',
-                                                        encryptionType: 'TLS'
-                                                    }))}
-                                                >
-                                                    Use Gmail Defaults
-                                                </Button>
-                                            </div>
-                                            <Input value={smtpConfig.smtpHost} onChange={e => setSmtpConfig(p => ({ ...p, smtpHost: e.target.value }))} placeholder="smtp.gmail.com" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Port</Label>
-                                            <Input value={smtpConfig.smtpPort} onChange={e => setSmtpConfig(p => ({ ...p, smtpPort: e.target.value }))} placeholder="587" />
-                                        </div>
+                                    <div className="flex gap-4">
+                                        <Button
+                                            variant={useGlobalConfig ? "default" : "outline"}
+                                            className="flex-1"
+                                            onClick={() => setUseGlobalConfig(true)}
+                                            disabled={globalSmtpConfigs.length === 0}
+                                        >
+                                            Use Global Configuration
+                                        </Button>
+                                        <Button
+                                            variant={!useGlobalConfig ? "default" : "outline"}
+                                            className="flex-1"
+                                            onClick={() => setUseGlobalConfig(false)}
+                                        >
+                                            Create Group-Specific
+                                        </Button>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>Email Address</Label>
-                                        <Input value={smtpConfig.smtpEmail} onChange={e => setSmtpConfig(p => ({ ...p, smtpEmail: e.target.value }))} type="email" placeholder="sender@example.com" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>App Password</Label>
-                                        <div className="relative">
-                                            <Input
-                                                value={smtpConfig.smtpPassword}
-                                                onChange={e => setSmtpConfig(p => ({ ...p, smtpPassword: e.target.value }))}
-                                                type={showPassword ? "text" : "password"}
-                                                placeholder="••••••••"
-                                                className="pr-10"
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                                onClick={() => setShowPassword(!showPassword)}
-                                            >
-                                                {showPassword ? (
-                                                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                                                ) : (
-                                                    <Eye className="h-4 w-4 text-muted-foreground" />
-                                                )}
-                                                <span className="sr-only">
-                                                    {showPassword ? "Hide password" : "Show password"}
-                                                </span>
-                                            </Button>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">Use an App Password if using Gmail/Outlook.</p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Encryption</Label>
-                                        <Select value={smtpConfig.encryptionType} onValueChange={v => setSmtpConfig(p => ({ ...p, encryptionType: v }))}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="TLS">TLS</SelectItem>
-                                                <SelectItem value="SSL">SSL</SelectItem>
-                                                <SelectItem value="NONE">None</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Sender Name (Optional)</Label>
-                                        <Input value={smtpConfig.senderName} onChange={e => setSmtpConfig(p => ({ ...p, senderName: e.target.value }))} placeholder="Certificate System" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Reply-To (Optional)</Label>
-                                        <Input value={smtpConfig.replyTo} onChange={e => setSmtpConfig(p => ({ ...p, replyTo: e.target.value }))} placeholder="reply@example.com" />
-                                    </div>
+                                    {globalSmtpConfigs.length === 0 && (
+                                        <p className="text-sm text-muted-foreground">
+                                            No global SMTP configurations available. <a href="/settings" className="text-primary hover:underline">Create one in Settings</a> to reuse across groups.
+                                        </p>
+                                    )}
                                 </CardContent>
                             </Card>
+
+                            {/* Global Config Selection */}
+                            {useGlobalConfig && globalSmtpConfigs.length > 0 && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Select Global Configuration</CardTitle>
+                                        <CardDescription>Choose a pre-configured SMTP server.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Select value={selectedGlobalConfigId} onValueChange={setSelectedGlobalConfigId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a configuration..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {globalSmtpConfigs.map(c => (
+                                                    <SelectItem key={c.id} value={c.id}>
+                                                        {c.name} ({c.smtpEmail})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Custom SMTP Form */}
+                            {!useGlobalConfig && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>SMTP Settings</CardTitle>
+                                        <CardDescription>Configure your custom email sending server.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <Label>SMTP Host</Label>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-auto p-0 text-xs text-primary hover:bg-transparent"
+                                                        onClick={() => setSmtpConfig(p => ({
+                                                            ...p,
+                                                            smtpHost: 'smtp.gmail.com',
+                                                            smtpPort: '587',
+                                                            encryptionType: 'TLS'
+                                                        }))}
+                                                    >
+                                                        Use Gmail Defaults
+                                                    </Button>
+                                                </div>
+                                                <Input value={smtpConfig.smtpHost} onChange={e => setSmtpConfig(p => ({ ...p, smtpHost: e.target.value }))} placeholder="smtp.gmail.com" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Port</Label>
+                                                <Input value={smtpConfig.smtpPort} onChange={e => setSmtpConfig(p => ({ ...p, smtpPort: e.target.value }))} placeholder="587" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Email Address</Label>
+                                            <Input value={smtpConfig.smtpEmail} onChange={e => setSmtpConfig(p => ({ ...p, smtpEmail: e.target.value }))} type="email" placeholder="sender@example.com" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>App Password</Label>
+                                            <div className="relative">
+                                                <Input
+                                                    value={smtpConfig.smtpPassword}
+                                                    onChange={e => setSmtpConfig(p => ({ ...p, smtpPassword: e.target.value }))}
+                                                    type={showPassword ? "text" : "password"}
+                                                    placeholder="••••••••"
+                                                    className="pr-10"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                >
+                                                    {showPassword ? (
+                                                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                                    ) : (
+                                                        <Eye className="h-4 w-4 text-muted-foreground" />
+                                                    )}
+                                                    <span className="sr-only">
+                                                        {showPassword ? "Hide password" : "Show password"}
+                                                    </span>
+                                                </Button>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">Use an App Password if using Gmail/Outlook.</p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Encryption</Label>
+                                            <Select value={smtpConfig.encryptionType} onValueChange={v => setSmtpConfig(p => ({ ...p, encryptionType: v }))}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="TLS">TLS</SelectItem>
+                                                    <SelectItem value="SSL">SSL</SelectItem>
+                                                    <SelectItem value="NONE">None</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Sender Name (Optional)</Label>
+                                            <Input value={smtpConfig.senderName} onChange={e => setSmtpConfig(p => ({ ...p, senderName: e.target.value }))} placeholder="Certificate System" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Reply-To (Optional)</Label>
+                                            <Input value={smtpConfig.replyTo} onChange={e => setSmtpConfig(p => ({ ...p, replyTo: e.target.value }))} placeholder="reply@example.com" />
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Action Buttons */}
                             <div className="flex justify-between items-center">
-                                <Button variant="outline" onClick={handleTestSmtp} disabled={isTestingSmtp || !smtpConfig.smtpHost}>
-                                    {isTestingSmtp ? "Testing..." : "Test Connection"}
-                                </Button>
-                                <Button onClick={handleSaveSmtpConfig} disabled={isSavingSmtp}>
+                                {!useGlobalConfig && (
+                                    <Button variant="outline" onClick={handleTestSmtp} disabled={isTestingSmtp || !smtpConfig.smtpHost}>
+                                        {isTestingSmtp ? "Testing..." : "Test Connection"}
+                                    </Button>
+                                )}
+                                {useGlobalConfig && <div />}
+                                <Button onClick={handleSaveSmtpConfig} disabled={isSavingSmtp || (useGlobalConfig && !selectedGlobalConfigId)}>
                                     {isSavingSmtp && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
                                     Save SMTP Settings
                                 </Button>
