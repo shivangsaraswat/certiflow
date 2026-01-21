@@ -6,6 +6,17 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Certificate } from '../types/index.js';
 
 export async function createCertificateRecord(data: Omit<Certificate, 'id' | 'createdAt'>): Promise<Certificate> {
+    // Check if a certificate with this code already exists (orphaned or from another context)
+    const existing = await db.select({ id: certificates.id })
+        .from(certificates)
+        .where(eq(certificates.certificateCode, data.certificateCode));
+
+    if (existing[0]) {
+        // Delete the old record (this is a regeneration)
+        console.log(`[Certificate] Replacing existing certificate with code: ${data.certificateCode}`);
+        await db.delete(certificates).where(eq(certificates.id, existing[0].id));
+    }
+
     const id = uuidv4();
     const newCert = {
         id,
